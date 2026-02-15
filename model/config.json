@@ -1,0 +1,87 @@
+{
+  "tools": {
+    "subfinder": {
+      "enabled": true,
+      "description": "Fast passive subdomain enumeration"
+    },
+    "amass": {
+      "enabled": true,
+      "mode": "passive",
+      "description": "Comprehensive subdomain enumeration"
+    },
+    "sublist3r": {
+      "enabled": true,
+      "description": "Multi-source enumeration via search engines"
+    },
+    "assetfinder": {
+      "enabled": true,
+      "description": "Quick passive subdomain discovery"
+    },
+    "ffuf": {
+      "enabled": true,
+      "wordlist": "wordlists/dns_comprehensive.txt",
+      "description": "DNS brute forcing"
+    }
+  },
+  "path_discovery_tools": {
+    "ffuf": {
+      "enabled": true,
+      "wordlist": "wordlists/paths_common.txt",
+      "description": "Fast web fuzzer for directory/file discovery"
+    },
+    "dirsearch": {
+      "enabled": true,
+      "wordlist": "wordlists/paths_common.txt",
+      "description": "Advanced recursive directory discovery"
+    },
+    "arjun": {
+      "enabled": true,
+      "description": "HTTP parameter discovery via fuzzing"
+    },
+    "paramspider": {
+      "enabled": true,
+      "description": "Mining parameters from web archives"
+    }
+  },
+  "xss_tools": {
+    "dalfox": {
+      "enabled": true,
+      "description": "Parameter Analysis and XSS Scanning tool"
+    },
+    "nuclei": {
+      "enabled": true,
+      "templates": "http/vulnerabilities/xss/",
+      "description": "Fast vulnerability scanner with XSS templates"
+    },
+    "xsstrike": {
+      "enabled": true,
+      "description": "Advanced XSS Detection Suite"
+    }
+  },
+  "lfi_tools": {
+    "ffuf": {
+      "enabled": true,
+      "wordlist": "wordlists/lfi_payloads.txt",
+      "description": "Fast LFI fuzzing with custom payloads"
+    },
+    "dotdotpwn": {
+      "enabled": true,
+      "description": "Automated directory traversal detection"
+    },
+    "custom": {
+      "enabled": true,
+      "description": "Custom LFI payload testing with signature detection"
+    }
+  },
+  "parallel_execution": true,
+  "max_workers": 5,
+  "use_api_fallback": true,
+  "save_results": true,
+  "save_raw_output": false,
+  "output_directory": "results",
+  "perform_dns_validation": true,
+  "check_http_status": false,
+  "dns_timeout": 2,
+  "exclude_wildcard": true,
+  "min_subdomain_length": 3
+}

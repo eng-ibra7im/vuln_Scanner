@@ -1,0 +1,1022 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>SecOps Orchestrator Dashboard</title>
+        <link rel="icon" type="image/svg+xml" href="./logo.svg"> <link
+            <link rel="stylesheet" href="./main.css">
+        <link
+            href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap"
+            rel="stylesheet">
+        <link rel="stylesheet"
+            href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+        <script
+            src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+        <script
+            src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+        <script
+            src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
+    </head>
+    <body>
+
+        <nav class="sidebar">
+            <div class="brand">
+                <i class="fa-solid fa-shield-halved"></i>
+                <span>SecOps Pro</span>
+            </div>
+            <div class="nav-links">
+                <a onclick="switchTab('dashboard')" class="nav-item active"
+                    id="nav-dashboard">
+                    <i class="fa-solid fa-chart-pie"></i>
+                    <span>Overview</span>
+                </a>
+                <a onclick="switchTab('subdomain')" class="nav-item"
+                    id="nav-subdomain">
+                    <i class="fa-solid fa-network-wired"></i>
+                    <span>Subdomain Scanner</span>
+                </a>
+                <a onclick="switchTab('path')" class="nav-item" id="nav-path">
+                    <i class="fa-solid fa-folder-tree"></i>
+                    <span>Path Discovery</span>
+                </a>
+                <a onclick="switchTab('xss')" class="nav-item" id="nav-xss">
+                    <i class="fa-solid fa-code"></i>
+                    <span>XSS Scanner</span>
+                </a>
+                <a onclick="switchTab('sqli')" class="nav-item" id="nav-sqli">
+                    <i class="fa-solid fa-database"></i>
+                    <span>SQL Injection</span>
+                </a>
+                <a onclick="switchTab('lfi')" class="nav-item" id="nav-lfi">
+                    <i class="fa-solid fa-file-code"></i>
+                    <span>LFI Detection</span>
+                </a>
+            </div>
+            <div class="sidebar-footer">
+                <div
+                    style="display: flex; align-items: center; justify-content: center; gap: 8px;">
+                    <i class="fa-solid fa-shield-check"
+                        style="color: #10b981;"></i>
+                    <span>v3.1.0 Pro</span>
+                </div>
+                <div
+                    style="font-size: 0.75rem; color: #64748b; margin-top: 8px;">
+                    Powered by SecOps
+                </div>
+            </div>
+        </nav>
+
+        <main class="main-content">
+
+            <header>
+                <div class="page-title">
+                    <h1 id="page-heading">Dashboard</h1>
+                    <p id="page-desc">System overview and recent activities</p>
+                </div>
+                <div class="status-badge">
+                    <div class="pulse"></div>
+                    Systems Operational
+                </div>
+            </header>
+
+            <div id="view-dashboard" class="section-view active">
+                <div class="stats-overview">
+                    <div class="stat-card blue">
+                        <span class="stat-label">Total Scans</span>
+                        <span class="stat-value">0</span>
+                        <i class="fa-solid fa-radar stat-card-icon"></i>
+                    </div>
+                    <div class="stat-card pink">
+                        <span class="stat-label">High Severity</span>
+                        <span class="stat-value">0</span>
+                        <i
+                            class="fa-solid fa-triangle-exclamation stat-card-icon"></i>
+                    </div>
+                    <div class="stat-card green">
+                        <span class="stat-label">Subdomains Found</span>
+                        <span class="stat-value">0</span>
+                        <i class="fa-solid fa-sitemap stat-card-icon"></i>
+                    </div>
+                    <div class="stat-card orange">
+                        <span class="stat-label">XSS Findings</span>
+                        <span class="stat-value" id="stat-xss-findings">0</span>
+                        <i class="fa-solid fa-bug stat-card-icon"></i>
+                    </div>
+                    <div class="stat-card red">
+                        <span class="stat-label">SQL Injection</span>
+                        <span class="stat-value"
+                            id="stat-sqli-findings">0</span>
+                        <i class="fa-solid fa-database stat-card-icon"></i>
+                    </div>
+                    <div class="stat-card purple">
+                        <span class="stat-label">LFI Findings</span>
+                        <span class="stat-value"
+                            id="stat-lfi-findings">0</span>
+                        <i class="fa-solid fa-file-code stat-card-icon"></i>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <h3><i class="fa-solid fa-chart-line"></i> Activity
+                            Trend</h3>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="overviewChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <div id="view-subdomain" class="section-view">
+                <div class="card">
+                    <div class="card-header">
+                        <h3>Configure Scan</h3>
+                    </div>
+                    <form id="subdomainForm">
+                        <div class="form-row">
+                            <div class="input-group">
+                                <label>Target Domain</label>
+                                <input type="text" id="subdomainInput"
+                                    placeholder="e.g. example.com" required>
+                            </div>
+                        </div>
+
+                        <label class="form-label-group">Select
+                            Engines</label>
+                        <div class="tools-grid">
+                            <div class="tool-check">
+                                <input type="checkbox" id="tool-subfinder"
+                                    checked>
+                                <label for="tool-subfinder">Subfinder</label>
+                            </div>
+                            <div class="tool-check">
+                                <input type="checkbox" id="tool-amass" checked>
+                                <label for="tool-amass">Amass</label>
+                            </div>
+                            <div class="tool-check">
+                                <input type="checkbox" id="tool-assetfinder"
+                                    checked>
+                                <label
+                                    for="tool-assetfinder">Assetfinder</label>
+                            </div>
+                            <div class="tool-check">
+                                <input type="checkbox" id="tool-sublist3r"
+                                    checked>
+                                <label for="tool-sublist3r">Sublist3r</label>
+                            </div>
+                            <div class="tool-check">
+                                <input type="checkbox" id="tool-ffuf" checked>
+                                <label for="tool-ffuf">FFUF</label>
+                            </div>
+                        </div>
+
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fa-solid fa-magnifying-glass"></i> Start
+                            Subdomain Scan
+                        </button>
+                    </form>
+
+                    <div id="subdomain-loader" class="loader-overlay">
+                        <div class="spinner"></div>
+                        <p>Scanning domain architecture... This may take a few
+                            minutes.</p>
+                    </div>
+                </div>
+
+                <div id="subdomain-results" class="card hidden">
+                    <div class="card-header card-header-flex">
+                        <div>
+                            <h3>Scan Results</h3>
+                        </div>
+                        <div class="header-actions">
+                            <span class="badge badge-low badge-found">0
+                                Found</span>
+                            <button class="btn-icon btn-pdf"
+                                onclick="exportSubdomainResultsPDF()"
+                                title="Export PDF">
+                                <i class="fa-solid fa-file-pdf"></i>
+                            </button>
+                            <button class="btn-icon"
+                                onclick="exportSubdomainResults('json')"
+                                title="Export JSON">
+                                <i class="fa-solid fa-download"></i>
+                            </button>
+                            <button class="btn-icon"
+                                onclick="clearSubdomainResults()"
+                                title="Clear Results">
+                                <i class="fa-solid fa-trash"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="search-input-container">
+                        <input type="text" id="subdomainSearch"
+                            placeholder="🔍 Search subdomains..."
+                            class="search-input"
+                            oninput="filterSubdomainResults()">
+                    </div>
+                    <div class="table-container">
+                        <table id="subResultsTable">
+                            <thead>
+                                <tr>
+                                    <th>Subdomain</th>
+                                    <th>Priority</th>
+                                    <th>IP Address</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                            </tbody>
+                        </table>
+                    </div>
+                    <!-- Pagination Controls -->
+                    <div class="pagination-container" id="subdomainPagination">
+                        <div class="pagination-info">
+                            <span id="subdomainPaginationInfo">Showing 0-0 of 0
+                                results</span>
+                        </div>
+                        <div class="pagination-controls">
+                            <button class="pagination-btn" id="subdomainPrevBtn"
+                                onclick="changeSubdomainPage(-1)" disabled>
+                                <i class="fa-solid fa-chevron-left"></i>
+                                Previous
+                            </button>
+                            <div class="pagination-pages"
+                                id="subdomainPageNumbers"></div>
+                            <button class="pagination-btn" id="subdomainNextBtn"
+                                onclick="changeSubdomainPage(1)" disabled>
+                                Next <i class="fa-solid fa-chevron-right"></i>
+                            </button>
+                        </div>
+                        <div class="pagination-size">
+                            <label for="subdomainPageSize">Per page:</label>
+                            <select id="subdomainPageSize"
+                                title="Results per page"
+                                onchange="changeSubdomainPageSize()">
+                                <option value="25">25</option>
+                                <option value="50" selected>50</option>
+                                <option value="100">100</option>
+                                <option value="200">200</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="view-path" class="section-view">
+                <div class="card">
+                    <div class="card-header">
+                        <h3>Discovery Configuration</h3>
+                    </div>
+                    <form id="pathForm">
+                        <div class="form-row">
+                            <div class="input-group">
+                                <label>Target URL</label>
+                                <input type="text" id="pathUrlInput"
+                                    placeholder="https://example.com" required>
+                            </div>
+                        </div>
+
+                        <label class="form-label-group">Discovery
+                            Tools</label>
+                        <div class="tools-grid">
+                            <div class="tool-check">
+                                <input type="checkbox" id="pt-ffuf" checked>
+                                <label for="pt-ffuf">FFUF</label>
+                            </div>
+                            <div class="tool-check">
+                                <input type="checkbox" id="pt-dirsearch"
+                                    checked>
+                                <label for="pt-dirsearch">Dirsearch</label>
+                            </div>
+                            <div class="tool-check">
+                                <input type="checkbox" id="pt-arjun">
+                                <label for="pt-arjun">Arjun</label>
+                            </div>
+                            <div class="tool-check">
+                                <input type="checkbox" id="pt-paramspider"
+                                    checked>
+                                <label for="pt-paramspider">ParamSpider</label>
+                            </div>
+                        </div>
+
+                        <button type="submit"
+                            class="btn btn-primary btn-launch-discovery">
+                            <i class="fa-solid fa-rocket"></i> Launch Path
+                            Discovery
+                        </button>
+                    </form>
+
+                    <div id="path-loader" class="loader-overlay">
+                        <div class="spinner spinner-secondary"></div>
+                        <p>Fuzzing paths and discovering parameters...</p>
+                    </div>
+                </div>
+
+                <div id="path-results" class="card hidden">
+                    <div class="card-header card-header-flex">
+                        <h3>Discovered Endpoints</h3>
+                        <div class="header-actions">
+                            <button class="btn-icon btn-pdf"
+                                onclick="exportPathResultsPDF()"
+                                title="Export PDF">
+                                <i class="fa-solid fa-file-pdf"></i>
+                            </button>
+                            <button class="btn-icon"
+                                onclick="exportPathResults('json')"
+                                title="Export JSON">
+                                <i class="fa-solid fa-download"></i>
+                            </button>
+                            <button class="btn-icon"
+                                onclick="clearPathResults()"
+                                title="Clear Results">
+                                <i class="fa-solid fa-trash"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="search-input-container">
+                        <input type="text" id="pathSearch"
+                            placeholder="🔍 Search paths..."
+                            class="search-input"
+                            oninput="filterPathResults()">
+                    </div>
+                    <div class="table-container">
+                        <table id="pathResultsTable">
+                            <thead>
+                                <tr>
+                                    <th>Full URL</th>
+                                    <th>Status</th>
+                                    <th>Risk Level</th>
+                                    <th>Tool</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                            </tbody>
+                        </table>
+                    </div>
+                    <!-- Pagination Controls -->
+                    <div class="pagination-container" id="pathPagination">
+                        <div class="pagination-info">
+                            <span id="pathPaginationInfo">Showing 0-0 of 0
+                                results</span>
+                        </div>
+                        <div class="pagination-controls">
+                            <button class="pagination-btn" id="pathPrevBtn"
+                                onclick="changePathPage(-1)" disabled>
+                                <i class="fa-solid fa-chevron-left"></i>
+                                Previous
+                            </button>
+                            <div class="pagination-pages"
+                                id="pathPageNumbers"></div>
+                            <button class="pagination-btn" id="pathNextBtn"
+                                onclick="changePathPage(1)" disabled>
+                                Next <i class="fa-solid fa-chevron-right"></i>
+                            </button>
+                        </div>
+                        <div class="pagination-size">
+                            <label for="pathPageSize">Per page:</label>
+                            <select id="pathPageSize" title="Results per page"
+                                onchange="changePathPageSize()">
+                                <option value="25">25</option>
+                                <option value="50" selected>50</option>
+                                <option value="100">100</option>
+                                <option value="200">200</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- XSS Scanner Section -->
+            <div id="view-xss" class="section-view">
+                <div class="card">
+                    <div class="card-header">
+                        <h3>XSS Detection Configuration</h3>
+                    </div>
+                    <form id="xssForm">
+                        <div class="form-row">
+                            <div class="input-group">
+                                <label>Target URL (with parameters)</label>
+                                <input type="text" id="xssUrlInput"
+                                    placeholder="https://example.com/page?param=value"
+                                    required>
+                            </div>
+                        </div>
+
+                        <label class="form-label-group">XSS Detection
+                            Tools</label>
+                        <div class="tools-grid" id="xss-tools-grid">
+                            <div class="tool-check">
+                                <span class="tools-loading-text">Loading
+                                    tools...</span>
+                            </div>
+                        </div>
+
+                        <button type="submit"
+                            class="btn btn-primary btn-launch-discovery">
+                            <i class="fa-solid fa-bug"></i> Launch XSS Scan
+                        </button>
+                    </form>
+
+                    <div id="xss-loader" class="loader-overlay">
+                        <div class="spinner spinner-secondary"></div>
+                        <p>Detecting XSS vulnerabilities...</p>
+                        <div class="progress-container">
+                            <div class="progress-bar">
+                                <div id="xss-progress"
+                                    class="progress-fill"></div>
+                            </div>
+                            <div id="xss-progress-text"
+                                class="progress-text">0%</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- XSS Summary Stats -->
+                <div id="xss-summary" class="card hidden">
+                </div>
+
+                <div id="xss-results" class="card hidden">
+                    <div class="card-header card-header-flex">
+                        <h3>XSS Findings</h3>
+                        <div class="header-actions">
+                            <button class="btn-icon btn-pdf"
+                                onclick="exportXSSResultsPDF()"
+                                title="Export PDF">
+                                <i class="fa-solid fa-file-pdf"></i>
+                            </button>
+                            <button class="btn-icon"
+                                onclick="exportXSSResults('json')"
+                                title="Export JSON">
+                                <i class="fa-solid fa-download"></i>
+                            </button>
+                            <button class="btn-icon"
+                                onclick="clearXSSResults()"
+                                title="Clear Results">
+                                <i class="fa-solid fa-trash"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="search-input-container">
+                        <input type="text" id="xssSearch"
+                            placeholder="🔍 Search XSS findings..."
+                            class="search-input"
+                            oninput="filterXSSResults()">
+                    </div>
+                    <div class="table-container">
+                        <table id="xssResultsTable">
+                            <thead>
+                                <tr>
+                                    <th>URL</th>
+                                    <th>XSS Type</th>
+                                    <th>Severity</th>
+                                    <th>Parameter</th>
+                                    <th>Confidence</th>
+                                    <th>Tool</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                            </tbody>
+                        </table>
+                    </div>
+                    <!-- XSS Pagination Controls -->
+                    <div class="pagination-container" id="xssPagination">
+                        <div class="pagination-info">
+                            <span id="xssPaginationInfo">Showing 0-0 of 0
+                                results</span>
+                        </div>
+                        <div class="pagination-controls">
+                            <button class="pagination-btn" id="xssPrevBtn"
+                                onclick="changeXSSPage(-1)" disabled>
+                                <i class="fa-solid fa-chevron-left"></i>
+                                Previous
+                            </button>
+                            <div class="pagination-pages"
+                                id="xssPageNumbers"></div>
+                            <button class="pagination-btn" id="xssNextBtn"
+                                onclick="changeXSSPage(1)" disabled>
+                                Next <i class="fa-solid fa-chevron-right"></i>
+                            </button>
+                        </div>
+                        <div class="pagination-size">
+                            <label for="xssPageSize">Per page:</label>
+                            <select id="xssPageSize" title="Results per page"
+                                onchange="changeXSSPageSize()">
+                                <option value="25">25</option>
+                                <option value="50" selected>50</option>
+                                <option value="100">100</option>
+                                <option value="200">200</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- SQL Injection Scanner Section -->
+            <div id="view-sqli" class="section-view">
+                <div class="card">
+                    <div class="card-header">
+                        <h3>SQL Injection Detection Configuration</h3>
+                        <div class="scanner-info">
+                            <span class="info-badge">
+                                <i class="fa-solid fa-info-circle"></i>
+                                Uses SQLMap, Nuclei & Ghauri
+                            </span>
+                        </div>
+                    </div>
+                    <form id="sqliForm">
+                        <div class="form-row">
+                            <div class="input-group">
+                                <label>Target URL (with parameters)</label>
+                                <input type="text" id="sqliUrlInput"
+                                    placeholder="https://example.com/login.php?id=1"
+                                    required>
+                                <div class="input-help">
+                                    <i class="fa-solid fa-lightbulb"></i>
+                                    URL should contain parameters to test for
+                                    SQL injection
+                                </div>
+                            </div>
+                        </div>
+
+                        <label class="form-label-group">SQL Injection Detection
+                            Tools</label>
+                        <div class="tools-grid" id="sqli-tools-grid">
+                            <div class="tool-check">
+                                <input type="checkbox" id="sqli-sqlmap" checked>
+                                <label for="sqli-sqlmap">
+                                    <span class="tool-name">SQLMap</span>
+                                    <span class="tool-desc">Automatic SQL
+                                        injection detection</span>
+                                </label>
+                            </div>
+                            <div class="tool-check">
+                                <input type="checkbox" id="sqli-nuclei" checked>
+                                <label for="sqli-nuclei">
+                                    <span class="tool-name">Nuclei</span>
+                                    <span class="tool-desc">Fast template-based
+                                        scanning</span>
+                                </label>
+                            </div>
+                            <div class="tool-check">
+                                <input type="checkbox" id="sqli-ghauri" checked>
+                                <label for="sqli-ghauri">
+                                    <span class="tool-name">Ghauri</span>
+                                    <span class="tool-desc">Advanced
+                                        cross-platform detection</span>
+                                </label>
+                            </div>
+                        </div>
+
+                        <div class="scan-options">
+                            <div class="option-group">
+                                <label class="form-label-group">Scan
+                                    Intensity</label>
+                                <div class="radio-group">
+                                    <label class="radio-option">
+                                        <input type="radio" name="scanIntensity"
+                                            value="basic" checked>
+                                        <span>Basic (Fast)</span>
+                                    </label>
+                                    <label class="radio-option">
+                                        <input type="radio" name="scanIntensity"
+                                            value="aggressive">
+                                        <span>Aggressive (Thorough)</span>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <button type="submit"
+                            class="btn btn-primary btn-launch-discovery">
+                            <i class="fa-solid fa-database"></i> Launch SQL
+                            Injection Scan
+                        </button>
+                    </form>
+
+                    <div id="sqli-loader" class="loader-overlay">
+                        <div class="spinner spinner-secondary"></div>
+                        <p>Scanning for SQL injection vulnerabilities...</p>
+                        <div class="progress-container">
+                            <div class="progress-bar">
+                                <div id="sqli-progress"
+                                    class="progress-fill"></div>
+                            </div>
+                            <div id="sqli-progress-text"
+                                class="progress-text">0%</div>
+                        </div>
+                        <div id="sqli-status" class="scan-status">
+                            Initializing scan...
+                        </div>
+                    </div>
+                </div>
+
+                <!-- SQL Injection Summary Stats -->
+                <div id="sqli-summary" class="card hidden">
+                    <div class="card-header">
+                        <h3><i class="fa-solid fa-chart-pie"></i> Scan
+                            Summary</h3>
+                        <div class="sqli-scan-meta" id="sqli-scan-meta"></div>
+                    </div>
+
+                    <!-- Severity Stats -->
+                    <div class="sqli-severity-grid">
+                        <div class="sqli-severity-card sqli-sev-critical">
+                            <div class="sqli-sev-icon"><i
+                                    class="fa-solid fa-skull-crossbones"></i></div>
+                            <div class="sqli-sev-info">
+                                <span class="sqli-sev-count"
+                                    id="sqli-critical-count">0</span>
+                                <span class="sqli-sev-label">Critical</span>
+                            </div>
+                        </div>
+                        <div class="sqli-severity-card sqli-sev-high">
+                            <div class="sqli-sev-icon"><i
+                                    class="fa-solid fa-fire"></i></div>
+                            <div class="sqli-sev-info">
+                                <span class="sqli-sev-count"
+                                    id="sqli-high-count">0</span>
+                                <span class="sqli-sev-label">High</span>
+                            </div>
+                        </div>
+                        <div class="sqli-severity-card sqli-sev-medium">
+                            <div class="sqli-sev-icon"><i
+                                    class="fa-solid fa-triangle-exclamation"></i></div>
+                            <div class="sqli-sev-info">
+                                <span class="sqli-sev-count"
+                                    id="sqli-medium-count">0</span>
+                                <span class="sqli-sev-label">Medium</span>
+                            </div>
+                        </div>
+                        <div class="sqli-severity-card sqli-sev-low">
+                            <div class="sqli-sev-icon"><i
+                                    class="fa-solid fa-shield-halved"></i></div>
+                            <div class="sqli-sev-info">
+                                <span class="sqli-sev-count"
+                                    id="sqli-low-count">0</span>
+                                <span class="sqli-sev-label">Low</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Tool Results Breakdown -->
+                    <div class="sqli-tools-breakdown" id="sqli-tools-breakdown">
+                        <h4><i class="fa-solid fa-wrench"></i> Tool Results</h4>
+                        <div class="sqli-tools-cards"
+                            id="sqli-tools-cards"></div>
+                    </div>
+
+                    <!-- Injection Types Breakdown -->
+                    <div class="sqli-types-breakdown" id="sqli-types-breakdown">
+                        <h4><i class="fa-solid fa-code"></i> Injection
+                            Types</h4>
+                        <div class="sqli-types-tags" id="sqli-types-tags"></div>
+                    </div>
+
+                    <!-- Risk Assessment -->
+                    <div class="risk-assessment">
+                        <div class="risk-level" id="sqli-risk-level">
+                            <span class="risk-label"><i
+                                    class="fa-solid fa-gauge-high"></i> Overall
+                                Risk:</span>
+                            <span class="risk-value"
+                                id="sqli-risk-value">None</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- SQLi Details Modal -->
+                <div id="sqli-detail-modal" class="sqli-modal-overlay"
+                    style="display:none;">
+                    <div class="sqli-modal">
+                        <div class="sqli-modal-header">
+                            <h3><i class="fa-solid fa-bug"></i> Vulnerability
+                                Details</h3>
+                            <button class="sqli-modal-close"
+                                onclick="closeSQLiModal()">
+                                <i class="fa-solid fa-xmark"></i>
+                            </button>
+                        </div>
+                        <div class="sqli-modal-body" id="sqli-modal-body"></div>
+                    </div>
+                </div>
+
+                <div id="sqli-results" class="card hidden">
+                    <div class="card-header card-header-flex">
+                        <h3>SQL Injection Findings</h3>
+                        <div class="header-actions">
+                            <button class="btn-icon btn-pdf"
+                                onclick="exportSQLiResultsPDF()"
+                                title="Export PDF">
+                                <i class="fa-solid fa-file-pdf"></i>
+                            </button>
+                            <button class="btn-icon"
+                                onclick="exportSQLiResults('json')"
+                                title="Export JSON">
+                                <i class="fa-solid fa-download"></i>
+                            </button>
+                            <button class="btn-icon"
+                                onclick="clearSQLiResults()"
+                                title="Clear Results">
+                                <i class="fa-solid fa-trash"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="search-input-container">
+                        <input type="text" id="sqliSearch"
+                            placeholder="🔍 Search SQL injection findings..."
+                            class="search-input" oninput="filterSQLiResults()">
+                    </div>
+                    <div class="table-container">
+                        <table id="sqliResultsTable">
+                            <thead>
+                                <tr>
+                                    <th>URL</th>
+                                    <th>Parameter</th>
+                                    <th>Injection Type</th>
+                                    <th>Severity</th>
+                                    <th>Confidence</th>
+                                    <th>Database</th>
+                                    <th>Tool</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="pagination-controls">
+                        <button class="btn btn-sm" id="sqliPrevPage"
+                            onclick="previousSQLiPage()" disabled>
+                            <i class="fa-solid fa-chevron-left"></i>
+                            Previous
+                        </button>
+                        <span class="page-info" id="sqliPageInfo">Page 1 of
+                            1</span>
+                        <button class="btn btn-sm" id="sqliNextPage"
+                            onclick="nextSQLiPage()" disabled>
+                            Next
+                            <i class="fa-solid fa-chevron-right"></i>
+                        </button>
+                    </div>
+                    <div class="pagination-controls">
+                        <div class="pagination-size">
+                            <label for="sqliPageSize">Per page:</label>
+                            <select id="sqliPageSize" title="Results per page"
+                                onchange="changeSQLiPageSize()">
+                                <option value="25">25</option>
+                                <option value="50" selected>50</option>
+                                <option value="100">100</option>
+                                <option value="200">200</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- LFI Detection Section -->
+            <div id="view-lfi" class="section-view">
+                <div class="card">
+                    <div class="card-header">
+                        <h3>LFI (Local File Inclusion) Detection</h3>
+                        <div class="scanner-info">
+                            <span class="info-badge">
+                                <i class="fa-solid fa-info-circle"></i>
+                                Tests for file inclusion vulnerabilities
+                            </span>
+                        </div>
+                    </div>
+                    <form id="lfiForm">
+                        <div class="form-row">
+                            <div class="input-group">
+                                <label>Target URL (with file parameter)</label>
+                                <input type="text" id="lfiUrlInput"
+                                    placeholder="https://example.com/page.php?file=index.php"
+                                    required>
+                                <div class="input-help">
+                                    <i class="fa-solid fa-lightbulb"></i>
+                                    URL should contain a file or page parameter
+                                </div>
+                            </div>
+                        </div>
+
+                        <label class="form-label-group">LFI Detection
+                            Tools</label>
+                        <div class="tools-grid" id="lfi-tools-grid">
+                            <div class="tool-check">
+                                <input type="checkbox" id="lfi-ffuf" checked>
+                                <label for="lfi-ffuf">
+                                    <span class="tool-name">FFUF</span>
+                                    <span class="tool-desc">Fast LFI fuzzing
+                                        with custom payloads</span>
+                                </label>
+                            </div>
+                            <div class="tool-check">
+                                <input type="checkbox" id="lfi-custom" checked>
+                                <label for="lfi-custom">
+                                    <span class="tool-name">Custom LFI</span>
+                                    <span class="tool-desc">Smart
+                                        signature-based detection</span>
+                                </label>
+                            </div>
+                            <div class="tool-check">
+                                <input type="checkbox" id="lfi-dotdotpwn">
+                                <label for="lfi-dotdotpwn">
+                                    <span class="tool-name">DotDotPwn</span>
+                                    <span class="tool-desc">Automated
+                                        directory traversal detection</span>
+                                </label>
+                            </div>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="input-group">
+                                <label>Parameters to Test (Optional)</label>
+                                <input type="text" id="lfiParamsInput"
+                                    placeholder="file,page,path (leave empty for auto-detection)">
+                                <div class="input-help">
+                                    <i class="fa-solid fa-lightbulb"></i>
+                                    Comma-separated list. Auto-detected if
+                                    empty.
+                                </div>
+                            </div>
+                        </div>
+
+                        <button type="submit"
+                            class="btn btn-primary btn-launch-discovery">
+                            <i class="fa-solid fa-file-code"></i> Launch LFI
+                            Scan
+                        </button>
+                    </form>
+
+                    <div id="lfi-loader" class="loader-overlay">
+                        <div class="spinner spinner-secondary"></div>
+                        <p>Scanning for LFI vulnerabilities...</p>
+                        <div class="progress-container">
+                            <div class="progress-bar">
+                                <div id="lfi-progress"
+                                    class="progress-fill"></div>
+                            </div>
+                            <div id="lfi-progress-text"
+                                class="progress-text">0%</div>
+                        </div>
+                        <div id="lfi-status" class="scan-status">
+                            Initializing scan...
+                        </div>
+                    </div>
+                </div>
+
+                <!-- LFI Summary Stats -->
+                <div id="lfi-summary" class="card hidden">
+                    <div class="card-header">
+                        <h3><i class="fa-solid fa-chart-pie"></i> Scan
+                            Summary</h3>
+                        <div class="lfi-scan-meta" id="lfi-scan-meta"></div>
+                    </div>
+
+                    <!-- Severity Stats -->
+                    <div class="sqli-severity-grid">
+                        <div class="sqli-severity-card sqli-sev-high">
+                            <div class="sqli-sev-icon"><i
+                                    class="fa-solid fa-fire"></i></div>
+                            <div class="sqli-sev-info">
+                                <span class="sqli-sev-count"
+                                    id="lfi-high-count">0</span>
+                                <span class="sqli-sev-label">High</span>
+                            </div>
+                        </div>
+                        <div class="sqli-severity-card sqli-sev-medium">
+                            <div class="sqli-sev-icon"><i
+                                    class="fa-solid fa-exclamation-triangle"></i></div>
+                            <div class="sqli-sev-info">
+                                <span class="sqli-sev-count"
+                                    id="lfi-medium-count">0</span>
+                                <span class="sqli-sev-label">Medium</span>
+                            </div>
+                        </div>
+                        <div class="sqli-severity-card sqli-sev-low">
+                            <div class="sqli-sev-icon"><i
+                                    class="fa-solid fa-info-circle"></i></div>
+                            <div class="sqli-sev-info">
+                                <span class="sqli-sev-count"
+                                    id="lfi-low-count">0</span>
+                                <span class="sqli-sev-label">Low</span>
+                            </div>
+                        </div>
+                        <div class="sqli-severity-card sqli-sev-info">
+                            <div class="sqli-sev-icon"><i
+                                    class="fa-solid fa-vial"></i></div>
+                            <div class="sqli-sev-info">
+                                <span class="sqli-sev-count"
+                                    id="lfi-payloads-count">0</span>
+                                <span class="sqli-sev-label">Payloads
+                                    Tested</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Details -->
+                    <div class="sqli-details-grid">
+                        <div class="sqli-detail-item">
+                            <span class="sqli-detail-label">Target URL</span>
+                            <span class="sqli-detail-value"
+                                id="lfi-target-url">-</span>
+                        </div>
+                        <div class="sqli-detail-item">
+                            <span class="sqli-detail-label">Parameters
+                                Tested</span>
+                            <span class="sqli-detail-value"
+                                id="lfi-params-tested">0</span>
+                        </div>
+                        <div class="sqli-detail-item">
+                            <span class="sqli-detail-label">Execution
+                                Time</span>
+                            <span class="sqli-detail-value"
+                                id="lfi-exec-time">0s</span>
+                        </div>
+                        <div class="sqli-detail-item">
+                            <span class="sqli-detail-label">Tools Used</span>
+                            <span class="sqli-detail-value"
+                                id="lfi-tools-used">-</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- LFI Results Table -->
+                <div id="lfi-results" class="card hidden">
+                    <div class="card-header card-header-flex">
+                        <h3>LFI Findings</h3>
+                        <div class="header-actions">
+                            <button class="btn-icon btn-pdf"
+                                onclick="exportLFIResultsPDF()"
+                                title="Export PDF">
+                                <i class="fa-solid fa-file-pdf"></i>
+                            </button>
+                            <button class="btn-icon"
+                                onclick="exportLFIResults('json')"
+                                title="Export JSON">
+                                <i class="fa-solid fa-download"></i>
+                            </button>
+                            <button class="btn-icon"
+                                onclick="clearLFIResults()"
+                                title="Clear Results">
+                                <i class="fa-solid fa-trash"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="search-input-container">
+                        <input type="text" id="lfiSearch"
+                            placeholder="🔍 Search LFI findings..."
+                            class="search-input" oninput="filterLFIResults()">
+                    </div>
+                    <div class="table-container">
+                        <table id="lfiResultsTable">
+                            <thead>
+                                <tr>
+                                    <th>Parameter</th>
+                                    <th>Payload</th>
+                                    <th>Severity</th>
+                                    <th>Confidence</th>
+                                    <th>Evidence</th>
+                                    <th>Tool</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="pagination-controls">
+                        <button class="btn btn-sm" id="lfiPrevPage"
+                            onclick="previousLFIPage()" disabled>
+                            <i class="fa-solid fa-chevron-left"></i>
+                            Previous
+                        </button>
+                        <span class="page-info" id="lfiPageInfo">Page 1 of
+                            1</span>
+                        <button class="btn btn-sm" id="lfiNextPage"
+                            onclick="nextLFIPage()" disabled>
+                            Next
+                            <i class="fa-solid fa-chevron-right"></i>
+                        </button>
+                    </div>
+                    <div class="pagination-controls">
+                        <div class="pagination-size">
+                            <label for="lfiPageSize">Per page:</label>
+                            <select id="lfiPageSize" title="Results per page"
+                                onchange="changeLFIPageSize()">
+                                <option value="25">25</option>
+                                <option value="50" selected>50</option>
+                                <option value="100">100</option>
+                                <option value="200">200</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </main>
+
+        <script src="./main.js"></script>
+    </body>
+</html>

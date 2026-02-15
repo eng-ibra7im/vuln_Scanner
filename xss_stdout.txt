@@ -1,0 +1,14 @@
+ WAF Status: Offline 
+ WAF Status: Offline 
+ Testing parameter: cat 
+ Testing parameter: cat 
+ Reflections found: 1 
+ Reflections found: 1 
+ Analysing reflections 
+ Analysing reflections 
+ Generating payloads 
+ Generating payloads 
+ Payloads generated: 1536 
+ Payloads generated: 1536 
+ Progress: 1/1536  Progress: 1/1536  Progress: 2/1536  Progress: 2/1536  Progress: 3/1536  Progress: 3/1536  Progress: 4/1536  Progress: 4/1536  Progress: 5/1536  Progress: 5/1536  Progress: 6/1536  Progress: 6/1536  Progress: 7/1536  Progress: 7/1536  Progress: 8/1536  Progress: 8/1536  Progress: 9/1536  Progress: 9/1536  Progress: 10/1536  Progress: 10/1536  Progress: 11/1536  Progress: 11/1536  Progress: 12/1536  Progress: 12/1536  Progress: 13/1536  Progress: 13/1536  Progress: 14/1536  Progress: 14/1536  Progress: 15/1536  Progress: 15/1536  Progress: 16/1536  Progress: 16/1536  Progress: 17/1536  Progress: 17/1536  Progress: 18/1536  Progress: 18/1536  Progress: 19/1536  Progress: 19/1536  Progress: 20/1536  Progress: 20/1536  Progress: 21/1536  Progress: 21/1536  Progress: 22/1536  Progress: 22/1536  Progress: 23/1536  Progress: 23/1536  Progress: 24/1536  Progress: 24/1536  Progress: 25/1536  Progress: 25/1536  Progress: 26/1536  Progress: 26/1536  Progress: 27/1536  Progress: 27/1536  Progress: 28/1536  Progress: 28/1536  Progress: 29/1536  Progress: 29/1536  Progress: 30/1536  Progress: 30/1536 
+  

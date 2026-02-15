@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200">
+  <defs>
+    <linearGradient id="shieldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#2563eb;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#1e40af;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="eyeGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#22d3ee;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#0891b2;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+
+  <path d="M100 185 C 40 160, 20 120, 20 50 L 100 20 L 180 50 C 180 120, 160 160, 100 185 Z" 
+        fill="url(#shieldGrad)" stroke="#1e3a8a" stroke-width="3"/>
+
+  <path d="M100 185 V 140 M50 90 L 80 90 M120 90 L 150 90 M100 20 V 50" 
+        stroke="rgba(255,255,255,0.3)" stroke-width="2" fill="none"/>
+  
+  <circle cx="50" cy="90" r="3" fill="#60a5fa"/>
+  <circle cx="150" cy="90" r="3" fill="#60a5fa"/>
+  <circle cx="100" cy="140" r="3" fill="#60a5fa"/>
+
+  <circle cx="100" cy="95" r="35" fill="#ffffff"/>
+  <circle cx="100" cy="95" r="25" fill="url(#eyeGrad)"/>
+  
+  <rect x="90" y="85" width="20" height="20" rx="2" fill="#0f172a"/>
+  <circle cx="100" cy="95" r="4" fill="#ef4444"/> <ellipse cx="110" cy="85" rx="8" ry="4" fill="white" opacity="0.4" transform="rotate(-45 110 85)"/>
+</svg>
