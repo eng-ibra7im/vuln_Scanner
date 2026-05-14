@@ -19,7 +19,6 @@ import json
 import subprocess
 import time
 import re
-import shutil
 import sys
 from datetime import datetime, UTC
 from typing import List, Dict, Any, Optional, Callable
@@ -29,59 +28,13 @@ from urllib.parse import urlparse, parse_qs
 import logging
 
 from config import Config
+from logging_utils import configure_logger
+from tooling import is_tool_installed, resolve_tool_path
 
 
 def get_tool_path(tool_name: str) -> str:
-    """
-    Get the full path to a tool, checking venv Scripts directory first,
-    then Go bin directories, then system PATH.
-    """
-    # Check venv Scripts first
-    if hasattr(sys, "prefix") and sys.prefix != sys.base_prefix:
-        venv_scripts = Path(sys.prefix) / "Scripts"
-        if not venv_scripts.exists():
-            venv_scripts = Path(sys.prefix) / "bin"
-
-        for ext in [".exe", "", ".cmd", ".bat"]:
-            tool_path = venv_scripts / f"{tool_name}{ext}"
-            if tool_path.exists():
-                return str(tool_path)
-
-    # Check Go bin directories (common locations for Go tools like nuclei)
-    go_bin_paths = [
-        Path.home() / "go" / "bin",
-        Path(r"C:\Users\DUBAI STORE\go\bin"),
-        Path(r"C:\Program Files\Go\bin"),
-        Path("/usr/local/go/bin"),
-        Path.home() / ".go" / "bin",
-    ]
-
-    for go_bin in go_bin_paths:
-        if go_bin.exists():
-            for ext in [".exe", "", ".cmd", ".bat"]:
-                tool_path = go_bin / f"{tool_name}{ext}"
-                if tool_path.exists():
-                    return str(tool_path)
-
-    # Check common Python tool locations (sqlmap)
-    python_paths = [
-        Path(sys.prefix) / "Scripts",
-        Path.home() / ".local" / "bin",
-        Path("/usr/local/bin"),
-    ]
-
-    for py_path in python_paths:
-        if py_path.exists():
-            for ext in [".py", ".exe", "", ".cmd", ".bat"]:
-                tool_path = py_path / f"{tool_name}{ext}"
-                if tool_path.exists():
-                    return str(tool_path)
-
-    found = shutil.which(tool_name)
-    if found:
-        return found
-
-    return tool_name
+    """Backward-compatible wrapper around the shared tool resolver."""
+    return resolve_tool_path(tool_name)
 
 
 @dataclass
@@ -208,62 +161,55 @@ class SQLiDetectionOrchestrator:
     def __init__(self, config: Optional[Config] = None):
         """Initialize the SQLi Detection Orchestrator"""
         self.config = config or Config()
-        self.logger = logging.getLogger(__name__)
+        self.logger = configure_logger("SQLiDetectionOrchestrator")
 
         # Tool availability cache
         self._tool_availability: Dict[str, bool] = {}
 
         # Default tool configurations
-        self.tool_configs = {
+        default_tool_configs = {
             "sqlmap": {
+                "enabled": True,
                 "timeout": 300,
                 "priority": 1,
                 "description": "Automatic SQL injection detection tool",
             },
             "nuclei": {
+                "enabled": True,
                 "timeout": 180,
                 "priority": 2,
                 "description": "Fast template-based SQLi scanning",
             },
             "ghauri": {
+                "enabled": True,
                 "timeout": 240,
                 "priority": 3,
                 "description": "Advanced cross-platform SQLi detection",
             },
         }
 
+        configured_tools = self.config.get_sqli_tools()
+        self.tool_configs = {}
+        for tool_name, tool_config in default_tool_configs.items():
+            merged_config = tool_config.copy()
+            merged_config.update(configured_tools.get(tool_name, {}))
+            self.tool_configs[tool_name] = merged_config
+
     def check_tool_availability(self, tool_name: str) -> bool:
         """Check if a tool is available in the system"""
         if tool_name in self._tool_availability:
             return self._tool_availability[tool_name]
 
-        tool_path = get_tool_path(tool_name)
-        path_obj = Path(tool_path)
-
-        # Check if it's an absolute path that exists
-        if path_obj.is_absolute() and path_obj.exists():
-            self._tool_availability[tool_name] = True
-            return True
-
-        # Check if shutil.which can find it
-        if shutil.which(tool_name):
-            self._tool_availability[tool_name] = True
-            return True
-
-        # Special check for sqlmap (might be sqlmap.py)
-        if tool_name == "sqlmap":
-            sqlmap_py = shutil.which("sqlmap.py")
-            if sqlmap_py:
-                self._tool_availability[tool_name] = True
-                return True
-
-        self._tool_availability[tool_name] = False
-        return False
+        available = is_tool_installed(tool_name)
+        self._tool_availability[tool_name] = available
+        return available
 
     def get_available_tools(self) -> List[str]:
         """Get list of available SQLi detection tools"""
         available = []
-        for tool in self.tool_configs.keys():
+        for tool, tool_config in self.tool_configs.items():
+            if not tool_config.get("enabled", True):
+                continue
             if self.check_tool_availability(tool):
                 available.append(tool)
         return available
@@ -1214,14 +1160,17 @@ class SQLiDetectionOrchestrator:
 
     def _save_results(self, results: Dict, domain: str) -> str:
         """Save scan results to JSON file"""
-        results_dir = Path(__file__).parent / "results" / "sqli"
+        results_dir = self.config.get_results_dir("sqli", base_path=Path(__file__).parent)
         results_dir.mkdir(parents=True, exist_ok=True)
 
+        parsed = urlparse(domain)
+        domain_label = parsed.netloc or domain
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        safe_domain = re.sub(r"[^\w\-.]", "_", domain)
-        filename = f"{safe_domain}_sqli_{timestamp}.json"
+        safe_domain = re.sub(r"[^\w\-.]", "_", domain_label).strip("_") or "target"
+        filename = f"sqli_{safe_domain}_{timestamp}.json"
         filepath = results_dir / filename
 
+        results["output_file"] = str(filepath)
         with open(filepath, "w", encoding="utf-8") as f:
             json.dump(results, f, indent=2, ensure_ascii=False)
 

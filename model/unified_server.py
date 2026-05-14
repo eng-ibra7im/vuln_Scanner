@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Unified Web Server for Vulnerability Scanner
-Combines Subdomain Enumeration and Path Discovery
+Deprecated unified server entrypoint.
+Use web_server.py as the single supported server entrypoint.
 """
 
 from flask import Flask, send_file, jsonify, request
@@ -548,8 +548,14 @@ def list_path_jobs():
     )
 
 
-def run_unified_server(host="0.0.0.0", port=5001, debug=False):
+def run_unified_server(host="0.0.0.0", port=5000, debug=False):
     """Run the unified web server"""
+    print("Deprecated entrypoint: model/unified_server.py")
+    print("Redirecting to model/web_server.py")
+    from web_server import run_web_server
+
+    return run_web_server(host=host, port=port, debug=debug)
+
     print("=" * 60)
     print("Vulnerability Scanner - Unified Web Server")
     print("=" * 60)
@@ -572,13 +578,13 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(
-        description="Vulnerability Scanner - Unified Web Server"
+        description="Deprecated wrapper for the integrated web server"
     )
     parser.add_argument(
         "--host", default="0.0.0.0", help="Host address (default: 0.0.0.0)"
     )
     parser.add_argument(
-        "--port", type=int, default=5001, help="Port number (default: 5001)"
+        "--port", type=int, default=5000, help="Port number (default: 5000)"
     )
     parser.add_argument("--debug", action="store_true", help="Enable debug mode")
 

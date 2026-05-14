@@ -30,55 +30,13 @@ from urllib.parse import urlparse, parse_qs, urlencode
 import logging
 
 from config import Config
+from logging_utils import configure_logger
+from tooling import resolve_tool_path
 
 
 def get_tool_path(tool_name: str) -> str:
-    """
-    Get the full path to a tool, checking venv Scripts directory first,
-    then Go bin directories, then system PATH.
-    """
-    # Check venv Scripts first - both detected and hardcoded paths
-    venv_paths = []
-
-    # Try detected venv
-    if hasattr(sys, "prefix") and sys.prefix != sys.base_prefix:
-        venv_scripts = Path(sys.prefix) / "Scripts"
-        if not venv_scripts.exists():
-            venv_scripts = Path(sys.prefix) / "bin"
-        venv_paths.append(venv_scripts)
-
-    # Try hardcoded venv path as fallback
-    hardcoded_venv = Path(__file__).parent.parent / ".venv" / "Scripts"
-    if hardcoded_venv.exists():
-        venv_paths.append(hardcoded_venv)
-
-    for venv_scripts in venv_paths:
-        for ext in [".exe", "", ".cmd", ".bat"]:
-            tool_path = venv_scripts / f"{tool_name}{ext}"
-            if tool_path.exists():
-                return str(tool_path)
-
-    # Check Go bin directories (common locations for Go tools like dalfox, nuclei)
-    go_bin_paths = [
-        Path.home() / "go" / "bin",
-        Path(r"C:\Users\DUBAI STORE\go\bin"),
-        Path(r"C:\Program Files\Go\bin"),
-        Path("/usr/local/go/bin"),
-        Path.home() / ".go" / "bin",
-    ]
-
-    for go_bin in go_bin_paths:
-        if go_bin.exists():
-            for ext in [".exe", "", ".cmd", ".bat"]:
-                tool_path = go_bin / f"{tool_name}{ext}"
-                if tool_path.exists():
-                    return str(tool_path)
-
-    found = shutil.which(tool_name)
-    if found:
-        return found
-
-    return tool_name
+    """Backward-compatible wrapper around the shared tool resolver."""
+    return resolve_tool_path(tool_name)
 
 
 @dataclass
@@ -180,18 +138,7 @@ class XSSDetectionOrchestrator:
 
     def _setup_logging(self) -> logging.Logger:
         """Configure logging for the orchestrator"""
-        logger = logging.getLogger("XSSDetectionOrchestrator")
-        logger.setLevel(logging.DEBUG)
-
-        if not logger.handlers:
-            handler = logging.StreamHandler()
-            formatter = logging.Formatter(
-                "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-            )
-            handler.setFormatter(formatter)
-            logger.addHandler(handler)
-
-        return logger
+        return configure_logger("XSSDetectionOrchestrator", level=logging.DEBUG)
 
     def generate_execution_plan(
         self, target_url: str, params: List[str] = None
@@ -219,7 +166,7 @@ class XSSDetectionOrchestrator:
             params = list(query_params.keys())
 
         plans = []
-        xss_tools = self.config.xss_tools if hasattr(self.config, "xss_tools") else {}
+        xss_tools = self.config.get_xss_tools()
 
         # dalfox - Parameter Analysis and XSS Scanning
         if xss_tools.get("dalfox", {}).get("enabled", True):
@@ -948,14 +895,17 @@ class XSSDetectionOrchestrator:
 
     def _save_results(self, results: Dict, domain: str) -> str:
         """Save scan results to JSON file"""
-        results_dir = Path(__file__).parent / "results" / "xss"
+        results_dir = self.config.get_results_dir("xss", base_path=Path(__file__).parent)
         results_dir.mkdir(parents=True, exist_ok=True)
 
+        parsed = urlparse(domain)
+        domain_label = parsed.netloc or domain
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        safe_domain = re.sub(r"[^\w\-.]", "_", domain)
-        filename = f"{safe_domain}_xss_{timestamp}.json"
+        safe_domain = re.sub(r"[^\w\-.]", "_", domain_label).strip("_") or "target"
+        filename = f"xss_{safe_domain}_{timestamp}.json"
         filepath = results_dir / filename
 
+        results["output_file"] = str(filepath)
         with open(filepath, "w", encoding="utf-8") as f:
             json.dump(results, f, indent=2, ensure_ascii=False)
 

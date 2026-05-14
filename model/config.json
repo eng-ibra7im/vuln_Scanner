@@ -58,6 +58,20 @@
       "description": "Advanced XSS Detection Suite"
     }
   },
+  "sqli_tools": {
+    "sqlmap": {
+      "enabled": true,
+      "description": "Automatic SQL injection detection tool"
+    },
+    "nuclei": {
+      "enabled": true,
+      "description": "Fast template-based SQLi scanning"
+    },
+    "ghauri": {
+      "enabled": true,
+      "description": "Advanced cross-platform SQLi detection"
+    }
+  },
   "lfi_tools": {
     "ffuf": {
       "enabled": true,
@@ -71,6 +85,76 @@
     "custom": {
       "enabled": true,
       "description": "Custom LFI payload testing with signature detection"
+    }
+  },
+  "intelligence_rules": {
+    "enabled": true,
+    "auto_follow_up": true,
+    "preferred_scheme": "https",
+    "max_auto_targets_per_rule": 5,
+    "subdomain_triggers": {
+      "priority_threshold": "high",
+      "require_active": true,
+      "classification_keywords": [
+        "admin",
+        "api",
+        "development",
+        "database",
+        "auth",
+        "login"
+      ],
+      "follow_up_modules": [
+        "path"
+      ]
+    },
+    "path_triggers": {
+      "default_query_value": "scan",
+      "path_keyword_modules": {
+        "admin": [
+          "xss",
+          "sqli",
+          "lfi"
+        ],
+        "auth": [
+          "xss",
+          "sqli"
+        ],
+        "login": [
+          "xss",
+          "sqli"
+        ],
+        "account": [
+          "xss",
+          "sqli"
+        ],
+        "profile": [
+          "xss"
+        ],
+        "api": [
+          "xss",
+          "sqli"
+        ],
+        "file": [
+          "lfi"
+        ],
+        "include": [
+          "lfi"
+        ],
+        "download": [
+          "lfi"
+        ]
+      },
+      "parameter_vuln_modules": {
+        "XSS": [
+          "xss"
+        ],
+        "SQL Injection": [
+          "sqli"
+        ],
+        "Path Traversal/LFI": [
+          "lfi"
+        ]
+      }
     }
   },
   "parallel_execution": true,

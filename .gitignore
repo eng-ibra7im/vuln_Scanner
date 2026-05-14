@@ -36,6 +36,8 @@ ENV/
 results/
 *.json
 !config.json
+!package.json
+!package-lock.json
 
 # Logs
 *.log

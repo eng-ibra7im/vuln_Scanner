@@ -21,7 +21,6 @@ import subprocess
 import asyncio
 import time
 import re
-import shutil
 import sys
 import os
 import base64
@@ -35,32 +34,13 @@ from urllib.parse import urlparse, urljoin
 import logging
 
 from config import Config
+from logging_utils import configure_logger
+from tooling import resolve_tool_path
 
 
 def get_tool_path(tool_name: str) -> str:
-    """
-    Get the full path to a tool, checking venv Scripts directory first.
-    Returns the tool name if not found (will be looked up in PATH).
-    """
-    # Check if running in a venv
-    if hasattr(sys, "prefix") and sys.prefix != sys.base_prefix:
-        # We're in a venv
-        venv_scripts = Path(sys.prefix) / "Scripts"  # Windows
-        if not venv_scripts.exists():
-            venv_scripts = Path(sys.prefix) / "bin"  # Linux/Mac
-
-        # Check for common executable extensions
-        for ext in [".exe", "", ".cmd", ".bat"]:
-            tool_path = venv_scripts / f"{tool_name}{ext}"
-            if tool_path.exists():
-                return str(tool_path)
-
-    # Check if tool is in PATH
-    found = shutil.which(tool_name)
-    if found:
-        return found
-
-    return tool_name
+    """Backward-compatible wrapper around the shared tool resolver."""
+    return resolve_tool_path(tool_name)
 
 
 @dataclass
@@ -240,18 +220,7 @@ class PathDiscoveryOrchestrator:
 
     def _setup_logging(self) -> logging.Logger:
         """Configure logging for the orchestrator"""
-        logger = logging.getLogger("PathDiscoveryOrchestrator")
-        logger.setLevel(logging.INFO)
-
-        if not logger.handlers:
-            handler = logging.StreamHandler()
-            formatter = logging.Formatter(
-                "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-            )
-            handler.setFormatter(formatter)
-            logger.addHandler(handler)
-
-        return logger
+        return configure_logger("PathDiscoveryOrchestrator")
 
     def generate_execution_plan(self, target_url: str) -> Dict[str, Any]:
         """
@@ -271,7 +240,7 @@ class PathDiscoveryOrchestrator:
         base_url = f"{parsed.scheme}://{parsed.netloc}"
 
         plans = []
-        path_tools = self.config.path_discovery_tools
+        path_tools = self.config.get_path_discovery_tools()
 
         # ffuf - Fast directory/file fuzzing
         if path_tools.get("ffuf", {}).get("enabled", False):
@@ -1430,14 +1399,17 @@ class PathDiscoveryOrchestrator:
 
     def _save_results(self, results: Dict, domain: str):
         """Save scan results to file"""
-        output_dir = Path(__file__).parent / self.config.output_directory / "paths"
+        output_dir = self.config.get_results_dir("paths", base_path=Path(__file__).parent)
         output_dir.mkdir(parents=True, exist_ok=True)
 
+        parsed = urlparse(domain)
+        domain_label = parsed.netloc or domain
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        safe_domain = domain.replace(".", "_").replace(":", "_")
-        filename = f"{safe_domain}_paths_{timestamp}.json"
+        safe_domain = re.sub(r"[^\w\-.]", "_", domain_label).strip("_") or "target"
+        filename = f"paths_{safe_domain}_{timestamp}.json"
 
         filepath = output_dir / filename
+        results["output_file"] = str(filepath)
         with open(filepath, "w", encoding="utf-8") as f:
             json.dump(results, f, indent=2, ensure_ascii=False)
 

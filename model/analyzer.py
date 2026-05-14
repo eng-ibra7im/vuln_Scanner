@@ -19,10 +19,12 @@ class SubdomainAnalyzer:
     Performs deduplication, validation, classification, and prioritization.
     """
 
-    def __init__(self):
+    def __init__(self, perform_dns_validation: bool = True, dns_timeout: int = 2):
+        self.perform_dns_validation = perform_dns_validation
+        self.dns_timeout = max(1, int(dns_timeout))
         self.dns_resolver = dns.resolver.Resolver()
-        self.dns_resolver.timeout = 2
-        self.dns_resolver.lifetime = 2
+        self.dns_resolver.timeout = self.dns_timeout
+        self.dns_resolver.lifetime = self.dns_timeout
 
         # Patterns for classification
         self.interesting_patterns = {
@@ -56,8 +58,11 @@ class SubdomainAnalyzer:
         unique_subdomains = self._deduplicate(all_subdomains)
         cleaned = self._clean_subdomains(unique_subdomains, target_domain)
 
-        # Validate subdomains
-        validated = self._validate_subdomains(cleaned)
+        # Validate subdomains when enabled, otherwise keep structural placeholders.
+        if self.perform_dns_validation:
+            validated = self._validate_subdomains(cleaned)
+        else:
+            validated = self._build_unvalidated_results(cleaned)
 
         # Classify subdomains
         classified = self._classify_subdomains(validated)
@@ -184,6 +189,19 @@ class SubdomainAnalyzer:
 
         return validated
 
+    def _build_unvalidated_results(self, subdomains: List[str]) -> List[Dict[str, Any]]:
+        """Build placeholder validation entries when DNS validation is disabled."""
+        return [
+            {
+                "subdomain": subdomain,
+                "dns_valid": False,
+                "ip_addresses": [],
+                "cname": None,
+                "has_mx": False,
+            }
+            for subdomain in subdomains
+        ]
+
     def _classify_subdomains(
         self, validated: List[Dict[str, Any]]
     ) -> List[Dict[str, Any]]:
@@ -282,6 +300,8 @@ class SubdomainAnalyzer:
             "classification_distribution": {},
             "depth_distribution": Counter(s["depth"] for s in prioritized),
             "validation_rate": 0,
+            "dns_validation_enabled": self.perform_dns_validation,
+            "dns_timeout_seconds": self.dns_timeout,
         }
 
         # Per-tool statistics

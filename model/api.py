@@ -1,23 +1,33 @@
 """
-REST API Wrapper for Subdomain Enumeration Orchestrator
-Provides HTTP API for integration with web dashboards and external systems.
+Deprecated API wrapper.
+Use web_server.py as the single supported server entrypoint.
 """
 
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import threading
+import shutil
 import uuid
 from datetime import datetime, UTC
 from typing import Dict
+from pathlib import Path
 from orchestrator import SubdomainOrchestrator
 from config import Config
 
 app = Flask(__name__)
 CORS(app)  # Enable CORS for dashboard integration
 
+BASE_DIR = Path(__file__).parent
+CONFIG_PATH = BASE_DIR / "config.json"
+
 # Job tracking
 active_jobs: Dict[str, dict] = {}
 completed_jobs: Dict[str, dict] = {}
+
+
+def get_runtime_config() -> Config:
+    """Load configuration from the model directory."""
+    return Config.load(str(CONFIG_PATH))
 
 
 @app.route("/api/health", methods=["GET"])
@@ -36,11 +46,11 @@ def health_check():
 def get_config():
     """Get current configuration"""
     try:
-        config = Config.load("config.json")
+        config = get_runtime_config()
         return jsonify(
             {
                 "success": True,
-                "tools": config.tools,
+                "tools": config.get_subdomain_tools(),
                 "settings": {
                     "parallel_execution": config.parallel_execution,
                     "perform_dns_validation": config.perform_dns_validation,
@@ -56,16 +66,34 @@ def get_config():
 def list_tools():
     """List available tools and their status"""
     try:
-        config = Config.load("config.json")
+        config = get_runtime_config()
         tools_list = []
+        tool_aliases = {
+            "sublist3r": ["sublist3r.py"],
+        }
 
-        for tool_name, tool_config in config.tools.items():
+        for tool_name, tool_config in config.get_subdomain_tools().items():
+            installed = False
+            actual_path = None
+
+            for candidate in [tool_name, *tool_aliases.get(tool_name, [])]:
+                if not candidate:
+                    continue
+
+                resolved = shutil.which(candidate)
+                if resolved:
+                    installed = True
+                    actual_path = resolved
+                    break
+
             tools_list.append(
                 {
                     "name": tool_name,
                     "enabled": tool_config.get("enabled", False),
                     "description": tool_config.get("description", ""),
-                    "status": "available",
+                    "installed": installed,
+                    "status": "ready" if installed else "not_installed",
+                    "path": actual_path,
                 }
             )
 
@@ -100,12 +128,12 @@ def start_scan():
         job_id = str(uuid.uuid4())
 
         # Load config
-        config = Config.load("config.json")
+        config = get_runtime_config()
 
         # Apply request overrides
         if "tools" in data:
-            for tool in config.tools:
-                config.tools[tool]["enabled"] = tool in data["tools"]
+            for tool in config.get_subdomain_tools():
+                config.get_subdomain_tools()[tool]["enabled"] = tool in data["tools"]
 
         if "parallel" in data:
             config.parallel_execution = data["parallel"]
@@ -136,6 +164,7 @@ def start_scan():
                     "started_at": active_jobs[job_id]["started_at"],
                     "completed_at": datetime.now(UTC).isoformat(),
                     "results": results,
+                    "results_file": results.get("output_file"),
                 }
                 del active_jobs[job_id]
 
@@ -274,18 +303,19 @@ def get_stats():
 
 
 def run_api_server(host="0.0.0.0", port=5000, debug=False):
-    """Run the API server"""
-    print(f"Starting Subdomain Enumeration Orchestrator API")
-    print(f"API Documentation: http://{host}:{port}/api/health")
-    print(f"Listening on: http://{host}:{port}")
-    app.run(host=host, port=port, debug=debug)
+    """Run the official integrated web server via a deprecated wrapper."""
+    print("Deprecated entrypoint: model/api.py")
+    print("Redirecting to model/web_server.py")
+    from web_server import run_web_server
+
+    run_web_server(host=host, port=port, debug=debug)
 
 
 if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(
-        description="Subdomain Enumeration Orchestrator API Server"
+        description="Deprecated wrapper for the integrated web server"
     )
     parser.add_argument(
         "--host", default="0.0.0.0", help="Host address (default: 0.0.0.0)"

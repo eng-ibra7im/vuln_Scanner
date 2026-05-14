@@ -1,2 +1,5 @@
 dnspython>=2.3.0
-asyncio>=3.4.3
+flask>=2.3.0
+flask-cors>=4.0.0
+httpx>=0.27.0
+requests>=2.31.0

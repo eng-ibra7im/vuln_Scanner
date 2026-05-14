@@ -1,0 +1,10 @@
+{
+  "name": "vuln-scanner-tests",
+  "private": true,
+  "scripts": {
+    "test:frontend": "node --test tests/frontend.e2e.test.js"
+  },
+  "devDependencies": {
+    "jsdom": "^24.1.0"
+  }
+}

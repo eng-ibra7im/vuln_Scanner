@@ -4,13 +4,21 @@ An AI-powered security orchestration system for academic security research. This
 
 ## 🚀 Quick Start - Unified Dashboard
 
-**Run all security modules with one command:**
+**Current startup path:**
 
 ```powershell
-.\start_dashboard.ps1
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r model\requirements_api.txt
+.\run.ps1
 ```
 
-Access the unified dashboard at: **http://localhost:5001**
+Or on `cmd`:
+
+```bat
+run.bat
+```
+
+Access the dashboard at: **http://localhost:5000**
 
 **[📖 Quick Commands Guide →](QUICK_COMMANDS.md)** | **[🌐 Dashboard Guide (العربية) →](DASHBOARD_START_AR.md)** | **[📚 Full Guide →](UNIFIED_DASHBOARD.md)**
 
@@ -86,7 +94,8 @@ The orchestrator can coordinate the following subdomain discovery tools:
 
 ### Python Dependencies
 ```bash
-pip install -r requirements.txt
+python -m venv .venv
+./.venv/Scripts/python -m pip install -r model/requirements_api.txt
 ```
 
 ### External Tools
@@ -321,13 +330,13 @@ python cli.py example.com -o results.json && python reporter.py results.json rep
 
 ### Web Dashboard
 
-Start the interactive web dashboard to view and manage reports:
+Start the main integrated dashboard:
 
 ```bash
-python dashboard.py --host 0.0.0.0 --port 5001
+python web_server.py --host 0.0.0.0 --port 5000
 ```
 
-Then visit: http://localhost:5001
+Then visit: http://localhost:5000
 
 ### Features
 - **Interactive Charts**: Priority distribution, tool performance
@@ -561,3 +570,7 @@ For academic inquiries or issues, please refer to the project documentation or c
 ---
 
 **Remember:** Always obtain proper authorization before performing subdomain enumeration on any domain you do not own.
+
+
+
+<!-- ./run.ps1 -->

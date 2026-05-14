@@ -1,20 +1,29 @@
 @echo off
+set SCRIPT_DIR=%~dp0
+
 echo ============================================================
 echo   SecOps Orchestrator Dashboard
-echo   Vulnerability Scanner v2.5.0
+echo   Vulnerability Scanner v2.6.0
 echo ============================================================
 echo.
-
-cd /d "%~dp0model"
-
-echo Activating virtual environment...
-call "%~dp0.venv\Scripts\activate.bat"
-
-echo.
-echo Starting server on http://localhost:5000
-echo Press Ctrl+C to stop the server
+echo Launching PowerShell entrypoint with startup checks...
 echo.
 
-python web_server.py --host 0.0.0.0 --port 5000
+where powershell >nul 2>nul
+if errorlevel 1 (
+    echo ERROR: PowerShell is not available on this system.
+    pause
+    exit /b 1
+)
+
+powershell -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_DIR%run.ps1"
+set EXIT_CODE=%ERRORLEVEL%
+
+if not "%EXIT_CODE%"=="0" (
+    echo.
+    echo Startup failed. Review the messages above.
+    pause
+    exit /b %EXIT_CODE%
+)
 
 pause

@@ -4,8 +4,9 @@
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>SecOps Orchestrator Dashboard</title>
-        <link rel="icon" type="image/svg+xml" href="./logo.svg"> <link
-            <link rel="stylesheet" href="./main.css">
+        <link rel="icon" type="image/svg+xml" href="./logo.svg">
+        <link rel="stylesheet" href="./main.css">
+        <link rel="stylesheet" href="./profile-overrides.css">
         <link
             href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap"
             rel="stylesheet">
@@ -52,6 +53,11 @@
                     <i class="fa-solid fa-file-code"></i>
                     <span>LFI Detection</span>
                 </a>
+                <!-- <a onclick="switchTab('tool-health')" class="nav-item"
+                    id="nav-tool-health">
+                    <i class="fa-solid fa-screwdriver-wrench"></i>
+                    <span>Tool Health</span>
+                </a> -->
             </div>
             <div class="sidebar-footer">
                 <div
@@ -126,6 +132,23 @@
                         <canvas id="overviewChart"></canvas>
                     </div>
                 </div>
+
+                <div class="card">
+                    <div class="card-header card-header-flex">
+                        <h3><i class="fa-solid fa-file-lines"></i> Unified
+                            Recommendation Summary</h3>
+                        <div class="header-actions">
+                            <button class="btn btn-primary"
+                                onclick="loadRecommendationSummary()">
+                                <i class="fa-solid fa-wand-magic-sparkles"></i>
+                                Generate
+                            </button>
+                        </div>
+                    </div>
+                    <div id="recommendation-summary-content">
+                        No completed scans available yet.
+                    </div>
+                </div>
             </div>
 
             <div id="view-subdomain" class="section-view">
@@ -139,6 +162,36 @@
                                 <label>Target Domain</label>
                                 <input type="text" id="subdomainInput"
                                     placeholder="e.g. example.com" required>
+                            </div>
+                            <div class="input-group profile-group">
+                                <label for="subdomainProfile">Scan Profile</label>
+                                <div class="profile-picker">
+                                    <div class="profile-picker-head">
+                                        <div class="profile-picker-icon" aria-hidden="true">
+                                            <i class="fa-solid fa-globe"></i>
+                                        </div>
+                                        <div class="profile-picker-intro">
+                                            <span class="profile-picker-eyebrow">Scan strategy</span>
+                                            <h4 class="profile-picker-title">Choose coverage level</h4>
+                                            <p class="profile-picker-summary">Preset bundles that trade speed for coverage.</p>
+                                        </div>
+                                        <div class="profile-select-wrap">
+                                            <span class="profile-select-label">Preset</span>
+                                            <select id="subdomainProfile" class="profile-select"
+                                                aria-describedby="subdomainProfileMeta">
+                                                <option value="standard">Standard</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div id="subdomainProfileMeta" class="profile-meta" aria-live="polite">
+                                        <div class="profile-meta-top">
+                                            <span class="profile-pill profile-pill-standard">Standard</span>
+                                            <span class="profile-meta-mode">Recommended</span>
+                                        </div>
+                                        <p>Balanced coverage for regular assessments.</p>
+                                        <div class="profile-meta-chips"></div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
 
@@ -275,6 +328,36 @@
                                 <input type="text" id="pathUrlInput"
                                     placeholder="https://example.com" required>
                             </div>
+                            <div class="input-group profile-group">
+                                <label for="pathProfile">Scan Profile</label>
+                                <div class="profile-picker">
+                                    <div class="profile-picker-head">
+                                        <div class="profile-picker-icon" aria-hidden="true">
+                                            <i class="fa-solid fa-route"></i>
+                                        </div>
+                                        <div class="profile-picker-intro">
+                                            <span class="profile-picker-eyebrow">Scan strategy</span>
+                                            <h4 class="profile-picker-title">Choose coverage level</h4>
+                                            <p class="profile-picker-summary">Preset bundles that trade speed for coverage.</p>
+                                        </div>
+                                        <div class="profile-select-wrap">
+                                            <span class="profile-select-label">Preset</span>
+                                            <select id="pathProfile" class="profile-select"
+                                                aria-describedby="pathProfileMeta">
+                                                <option value="standard">Standard</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div id="pathProfileMeta" class="profile-meta" aria-live="polite">
+                                        <div class="profile-meta-top">
+                                            <span class="profile-pill profile-pill-standard">Standard</span>
+                                            <span class="profile-meta-mode">Recommended</span>
+                                        </div>
+                                        <p>Balanced coverage for regular assessments.</p>
+                                        <div class="profile-meta-chips"></div>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
 
                         <label class="form-label-group">Discovery
@@ -400,6 +483,36 @@
                                 <input type="text" id="xssUrlInput"
                                     placeholder="https://example.com/page?param=value"
                                     required>
+                            </div>
+                            <div class="input-group profile-group">
+                                <label for="xssProfile">Scan Profile</label>
+                                <div class="profile-picker">
+                                    <div class="profile-picker-head">
+                                        <div class="profile-picker-icon" aria-hidden="true">
+                                            <i class="fa-solid fa-bug"></i>
+                                        </div>
+                                        <div class="profile-picker-intro">
+                                            <span class="profile-picker-eyebrow">Scan strategy</span>
+                                            <h4 class="profile-picker-title">Choose coverage level</h4>
+                                            <p class="profile-picker-summary">Preset bundles that trade speed for coverage.</p>
+                                        </div>
+                                        <div class="profile-select-wrap">
+                                            <span class="profile-select-label">Preset</span>
+                                            <select id="xssProfile" class="profile-select"
+                                                aria-describedby="xssProfileMeta">
+                                                <option value="standard">Standard</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div id="xssProfileMeta" class="profile-meta" aria-live="polite">
+                                        <div class="profile-meta-top">
+                                            <span class="profile-pill profile-pill-standard">Standard</span>
+                                            <span class="profile-meta-mode">Recommended</span>
+                                        </div>
+                                        <p>Balanced coverage for regular assessments.</p>
+                                        <div class="profile-meta-chips"></div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
 
@@ -535,6 +648,36 @@
                                     <i class="fa-solid fa-lightbulb"></i>
                                     URL should contain parameters to test for
                                     SQL injection
+                                </div>
+                            </div>
+                            <div class="input-group profile-group">
+                                <label for="sqliProfile">Scan Profile</label>
+                                <div class="profile-picker">
+                                    <div class="profile-picker-head">
+                                        <div class="profile-picker-icon" aria-hidden="true">
+                                            <i class="fa-solid fa-database"></i>
+                                        </div>
+                                        <div class="profile-picker-intro">
+                                            <span class="profile-picker-eyebrow">Scan strategy</span>
+                                            <h4 class="profile-picker-title">Choose coverage level</h4>
+                                            <p class="profile-picker-summary">Preset bundles that trade speed for coverage.</p>
+                                        </div>
+                                        <div class="profile-select-wrap">
+                                            <span class="profile-select-label">Preset</span>
+                                            <select id="sqliProfile" class="profile-select"
+                                                aria-describedby="sqliProfileMeta">
+                                                <option value="standard">Standard</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div id="sqliProfileMeta" class="profile-meta" aria-live="polite">
+                                        <div class="profile-meta-top">
+                                            <span class="profile-pill profile-pill-standard">Standard</span>
+                                            <span class="profile-meta-mode">Recommended</span>
+                                        </div>
+                                        <p>Balanced coverage for regular assessments.</p>
+                                        <div class="profile-meta-chips"></div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -798,6 +941,36 @@
                                     URL should contain a file or page parameter
                                 </div>
                             </div>
+                            <div class="input-group profile-group">
+                                <label for="lfiProfile">Scan Profile</label>
+                                <div class="profile-picker">
+                                    <div class="profile-picker-head">
+                                        <div class="profile-picker-icon" aria-hidden="true">
+                                            <i class="fa-solid fa-file-code"></i>
+                                        </div>
+                                        <div class="profile-picker-intro">
+                                            <span class="profile-picker-eyebrow">Scan strategy</span>
+                                            <h4 class="profile-picker-title">Choose coverage level</h4>
+                                            <p class="profile-picker-summary">Preset bundles that trade speed for coverage.</p>
+                                        </div>
+                                        <div class="profile-select-wrap">
+                                            <span class="profile-select-label">Preset</span>
+                                            <select id="lfiProfile" class="profile-select"
+                                                aria-describedby="lfiProfileMeta">
+                                                <option value="standard">Standard</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div id="lfiProfileMeta" class="profile-meta" aria-live="polite">
+                                        <div class="profile-meta-top">
+                                            <span class="profile-pill profile-pill-standard">Standard</span>
+                                            <span class="profile-meta-mode">Recommended</span>
+                                        </div>
+                                        <p>Balanced coverage for regular assessments.</p>
+                                        <div class="profile-meta-chips"></div>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
 
                         <label class="form-label-group">LFI Detection
@@ -1011,6 +1184,38 @@
                                 <option value="200">200</option>
                             </select>
                         </div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="view-tool-health" class="section-view">
+                <div class="card">
+                    <div class="card-header card-header-flex">
+                        <div>
+                            <h3>Tool Health</h3>
+                            <p id="tool-health-summary">Loading tool status...</p>
+                        </div>
+                        <div class="header-actions">
+                            <button class="btn btn-primary"
+                                onclick="loadToolHealth()">
+                                <i class="fa-solid fa-rotate"></i> Refresh
+                            </button>
+                        </div>
+                    </div>
+                    <div class="table-container">
+                        <table id="toolHealthTable">
+                            <thead>
+                                <tr>
+                                    <th>Module</th>
+                                    <th>Tool</th>
+                                    <th>Status</th>
+                                    <th>Version</th>
+                                    <th>Path</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                            </tbody>
+                        </table>
                     </div>
                 </div>
             </div>

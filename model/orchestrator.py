@@ -20,6 +20,7 @@ import logging
 from config import Config
 from analyzer import SubdomainAnalyzer
 from formatter import ResultFormatter
+from logging_utils import configure_logger
 
 
 @dataclass
@@ -53,24 +54,17 @@ class SubdomainOrchestrator:
 
     def __init__(self, config: Config):
         self.config = config
-        self.analyzer = SubdomainAnalyzer()
+        self.analyzer = SubdomainAnalyzer(
+            perform_dns_validation=config.perform_dns_validation,
+            dns_timeout=config.dns_timeout,
+        )
         self.formatter = ResultFormatter()
         self.logger = self._setup_logging()
         self._api_fallback_enabled = config.use_api_fallback
 
     def _setup_logging(self) -> logging.Logger:
         """Configure logging for the orchestrator"""
-        logger = logging.getLogger("SubdomainOrchestrator")
-        logger.setLevel(logging.INFO)
-
-        handler = logging.StreamHandler()
-        formatter = logging.Formatter(
-            "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-        )
-        handler.setFormatter(formatter)
-        logger.addHandler(handler)
-
-        return logger
+        return configure_logger("SubdomainOrchestrator")
 
     def generate_execution_plan(self, target_domain: str) -> List[ExecutionPlan]:
         """
@@ -544,13 +538,16 @@ class SubdomainOrchestrator:
 
     def _save_results(self, target_domain: str, results: Dict[str, Any]):
         """Save results to file"""
-        output_dir = Path(self.config.output_directory)
-        output_dir.mkdir(exist_ok=True)
+        output_dir = self.config.get_results_dir(
+            "subdomains", base_path=Path(__file__).parent
+        )
+        output_dir.mkdir(parents=True, exist_ok=True)
 
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"{target_domain.replace('.', '_')}_{timestamp}.json"
+        filename = f"subdomains_{target_domain.replace('.', '_')}_{timestamp}.json"
         filepath = output_dir / filename
 
+        results["output_file"] = str(filepath)
         with open(filepath, "w") as f:
             json.dump(results, f, indent=2)
 

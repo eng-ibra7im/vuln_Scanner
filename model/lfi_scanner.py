@@ -21,6 +21,7 @@ from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
 import logging
 
 from config import Config
+from logging_utils import configure_logger
 
 
 @dataclass
@@ -95,20 +96,21 @@ class LFIOrchestrator:
             "<html",
         ]
 
+    def _get_lfi_tools_config(self) -> Dict[str, Dict[str, Any]]:
+        """Return normalized LFI tool configuration with legacy fallback."""
+        if hasattr(self.config, "get_lfi_tools"):
+            return self.config.get_lfi_tools()
+
+        lfi_tools = getattr(self.config, "lfi_tools", None)
+        if isinstance(lfi_tools, dict) and lfi_tools:
+            return lfi_tools
+
+        legacy_lfi_tools = getattr(self.config, "tools", {}).get("lfi_tools", {})
+        return legacy_lfi_tools if isinstance(legacy_lfi_tools, dict) else {}
+
     def _setup_logging(self) -> logging.Logger:
         """Configure logging for the orchestrator"""
-        logger = logging.getLogger("LFIOrchestrator")
-        logger.setLevel(logging.INFO)
-
-        if not logger.handlers:
-            handler = logging.StreamHandler()
-            formatter = logging.Formatter(
-                "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-            )
-            handler.setFormatter(formatter)
-            logger.addHandler(handler)
-
-        return logger
+        return configure_logger("LFIOrchestrator")
 
     def _extract_parameters(self, url: str) -> List[str]:
         """Extract vulnerable parameters from URL"""
@@ -143,12 +145,12 @@ class LFIOrchestrator:
             f"Generating LFI detection plans for {len(parameters)} parameters"
         )
 
+        lfi_tools = self._get_lfi_tools_config()
+
         # FFUF - Fast LFI fuzzing with custom wordlist
-        if self.config.tools.get("lfi_tools", {}).get("ffuf", {}).get("enabled", True):
+        if lfi_tools.get("ffuf", {}).get("enabled", True):
             wordlist = (
-                self.config.tools.get("lfi_tools", {})
-                .get("ffuf", {})
-                .get("wordlist", "wordlists/lfi_payloads.txt")
+                lfi_tools.get("ffuf", {}).get("wordlist", "wordlists/lfi_payloads.txt")
             )
             wordlist_path = Path(wordlist)
             if not wordlist_path.is_absolute():
@@ -205,9 +207,7 @@ class LFIOrchestrator:
 
         # DotDotPwn - Automated traversal directory detection
         if (
-            self.config.tools.get("lfi_tools", {})
-            .get("dotdotpwn", {})
-            .get("enabled", False)
+            lfi_tools.get("dotdotpwn", {}).get("enabled", False)
         ):
             for param in parameters:
                 parsed = urlparse(target_url)
@@ -244,9 +244,7 @@ class LFIOrchestrator:
 
         # Custom payload testing
         if (
-            self.config.tools.get("lfi_tools", {})
-            .get("custom", {})
-            .get("enabled", True)
+            lfi_tools.get("custom", {}).get("enabled", True)
         ):
             plans.append(
                 ExecutionPlan(
@@ -783,8 +781,8 @@ class LFIOrchestrator:
 
     def _save_results(self, target_url: str, results: Dict[str, Any]):
         """Save results to file"""
-        output_dir = Path(self.config.output_directory)
-        output_dir.mkdir(exist_ok=True)
+        output_dir = self.config.get_results_dir("lfi", base_path=Path(__file__).parent)
+        output_dir.mkdir(parents=True, exist_ok=True)
 
         # Sanitize URL for filename
         parsed = urlparse(target_url)
@@ -793,6 +791,7 @@ class LFIOrchestrator:
         filename = f"lfi_{domain}_{timestamp}.json"
         filepath = output_dir / filename
 
+        results["output_file"] = str(filepath)
         with open(filepath, "w") as f:
             json.dump(results, f, indent=2)
 

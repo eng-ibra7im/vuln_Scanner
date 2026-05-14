@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Web Dashboard for Subdomain Enumeration Reports
-Serves HTML reports through a web interface.
+Deprecated dashboard entrypoint.
+Use web_server.py as the single supported server entrypoint.
 """
 
 from flask import Flask, render_template_string, request, jsonify, send_file
@@ -942,8 +942,14 @@ def list_path_jobs():
         return jsonify({"success": False, "error": str(e)}), 500
 
 
-def run_dashboard_server(host="0.0.0.0", port=5001, debug=False):
+def run_dashboard_server(host="0.0.0.0", port=5000, debug=False):
     """Run the dashboard server"""
+    print("Deprecated entrypoint: model/dashboard.py")
+    print("Redirecting to model/web_server.py")
+    from web_server import run_web_server
+
+    return run_web_server(host=host, port=port, debug=debug)
+
     print("\n" + "=" * 70)
     print("  SecOps Orchestrator - Unified Security Dashboard")
     print("=" * 70)
@@ -964,12 +970,14 @@ def run_dashboard_server(host="0.0.0.0", port=5001, debug=False):
 if __name__ == "__main__":
     import argparse
 
-    parser = argparse.ArgumentParser(description="Security Scanning Web Dashboard")
+    parser = argparse.ArgumentParser(
+        description="Deprecated wrapper for the integrated web server"
+    )
     parser.add_argument(
         "--host", default="0.0.0.0", help="Host address (default: 0.0.0.0)"
     )
     parser.add_argument(
-        "--port", type=int, default=5001, help="Port number (default: 5001)"
+        "--port", type=int, default=5000, help="Port number (default: 5000)"
     )
     parser.add_argument("--debug", action="store_true", help="Enable debug mode")
 

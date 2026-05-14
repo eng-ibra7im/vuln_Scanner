@@ -66,6 +66,15 @@ let lfiPageSize = 25;
 let lfiTotalPages = 1;
 let currentLFIJobId = null;
 let lfiPollInterval = null;
+let profileOptions = [];
+const liveEventStreams = {};
+const PROFILE_SELECT_MODULES = {
+  subdomainProfile: "subdomains",
+  pathProfile: "paths",
+  xssProfile: "xss",
+  sqliProfile: "sqli",
+  lfiProfile: "lfi",
+};
 
 // =============================================
 // Initialization
@@ -83,6 +92,9 @@ async function initializeApp() {
   // Load initial data
   await loadStats();
   await loadToolsConfig();
+  await loadProfiles();
+  await loadToolHealth();
+  await loadRecommendationSummary();
 
   // Setup form handlers
   setupFormHandlers();
@@ -91,6 +103,235 @@ async function initializeApp() {
   initializeChart();
 
   console.log("✅ Dashboard initialized successfully");
+}
+
+function absoluteApiUrl(path) {
+  if (!path) return null;
+  if (/^https?:\/\//i.test(path)) {
+    return path;
+  }
+  return `${window.location.origin}${path}`;
+}
+
+function getSelectedProfile(selectId) {
+  return document.getElementById(selectId)?.value || "standard";
+}
+
+function getProfilePresetTone(profileId) {
+  if (profileId === "quick") return "Fast";
+  if (profileId === "deep") return "Thorough";
+  return "Balanced";
+}
+
+function buildProfileChips(profile, moduleName) {
+  const moduleConfig = profile?.modules?.[moduleName] || {};
+  const chips = [];
+  const tools = Array.isArray(moduleConfig.tools) ? moduleConfig.tools : [];
+
+  if (tools.length) {
+    chips.push({
+      icon: "fa-solid fa-screwdriver-wrench",
+      label: `${tools.length} tools`,
+    });
+  }
+
+  if (moduleConfig.parallel === true) {
+    chips.push({
+      icon: "fa-solid fa-bolt",
+      label: "Parallel",
+    });
+  }
+
+  if (moduleConfig.validate_dns === true) {
+    chips.push({
+      icon: "fa-solid fa-shield-check",
+      label: "DNS validation",
+    });
+  }
+
+  if (typeof moduleConfig.intensity === "string") {
+    chips.push({
+      icon: "fa-solid fa-gauge-high",
+      label:
+        moduleConfig.intensity === "aggressive"
+          ? "Aggressive"
+          : moduleConfig.intensity.charAt(0).toUpperCase() +
+            moduleConfig.intensity.slice(1),
+    });
+  }
+
+  if (moduleName === "lfi" && tools.includes("custom")) {
+    chips.push({
+      icon: "fa-solid fa-shield-halved",
+      label: "Signature checks",
+    });
+  }
+
+  return chips;
+}
+
+function renderProfileMeta(selectId) {
+  const select = document.getElementById(selectId);
+  const meta = document.getElementById(`${selectId}Meta`);
+  const moduleName = PROFILE_SELECT_MODULES[selectId];
+
+  if (!select || !meta || !moduleName) {
+    return;
+  }
+
+  const fallbackProfile = {
+    id: "standard",
+    label: "Standard",
+    description: "Balanced coverage for regular assessments.",
+    modules: {},
+  };
+  const profile =
+    profileOptions.find((item) => item.id === select.value) ||
+    profileOptions.find((item) => item.id === "standard") ||
+    fallbackProfile;
+
+  meta.replaceChildren();
+
+  const topRow = document.createElement("div");
+  topRow.className = "profile-meta-top";
+
+  const badge = document.createElement("span");
+  badge.className = `profile-pill profile-pill-${profile.id || "standard"}`;
+  badge.textContent = profile.label || "Standard";
+
+  const mode = document.createElement("span");
+  mode.className = "profile-meta-mode";
+  mode.textContent = getProfilePresetTone(profile.id);
+
+  topRow.appendChild(badge);
+  topRow.appendChild(mode);
+
+  const description = document.createElement("p");
+  description.textContent =
+    profile.description || "Balanced coverage for regular assessments.";
+
+  const chipsWrap = document.createElement("div");
+  chipsWrap.className = "profile-meta-chips";
+
+  const chips = buildProfileChips(profile, moduleName);
+  chips.forEach((chip) => {
+    const item = document.createElement("span");
+    item.className = "profile-meta-chip";
+
+    const icon = document.createElement("i");
+    icon.className = chip.icon;
+    icon.setAttribute("aria-hidden", "true");
+
+    const text = document.createElement("span");
+    text.textContent = chip.label;
+
+    item.appendChild(icon);
+    item.appendChild(text);
+    chipsWrap.appendChild(item);
+  });
+
+  meta.appendChild(topRow);
+  meta.appendChild(description);
+  meta.appendChild(chipsWrap);
+}
+
+function bindProfileSelectors() {
+  Object.keys(PROFILE_SELECT_MODULES).forEach((selectId) => {
+    const select = document.getElementById(selectId);
+    if (!select || select.dataset.profileBound === "true") {
+      return;
+    }
+
+    select.addEventListener("change", () => renderProfileMeta(selectId));
+    select.dataset.profileBound = "true";
+  });
+}
+
+function refreshProfileMeta() {
+  Object.keys(PROFILE_SELECT_MODULES).forEach((selectId) => {
+    renderProfileMeta(selectId);
+  });
+}
+
+function updateLoaderProgress(loaderId, progress, message = "") {
+  const loader = document.getElementById(loaderId);
+  if (!loader) return;
+
+  const textNode = loader.querySelector("p");
+  if (textNode) {
+    textNode.textContent = message
+      ? `${message} (${progress}%)`
+      : `${progress}%`;
+  }
+}
+
+function closeLiveStream(streamKey) {
+  const stream = liveEventStreams[streamKey];
+  if (stream) {
+    stream.close();
+    delete liveEventStreams[streamKey];
+  }
+}
+
+function monitorJobLive({
+  streamKey,
+  eventUrl,
+  resultsUrl,
+  onProgress,
+  onComplete,
+  onFailed,
+  fallbackPoll,
+}) {
+  closeLiveStream(streamKey);
+
+  if (!window.EventSource || !eventUrl) {
+    if (typeof fallbackPoll === "function") {
+      fallbackPoll();
+    }
+    return;
+  }
+
+  const source = new EventSource(absoluteApiUrl(eventUrl));
+  liveEventStreams[streamKey] = source;
+
+  source.addEventListener("progress", (event) => {
+    const payload = JSON.parse(event.data || "{}");
+    if (typeof onProgress === "function") {
+      onProgress(payload);
+    }
+  });
+
+  source.addEventListener("completed", async () => {
+    closeLiveStream(streamKey);
+    try {
+      const response = await fetch(absoluteApiUrl(resultsUrl));
+      const data = await response.json();
+      if (data.success && typeof onComplete === "function") {
+        onComplete(data.results);
+      } else if (typeof onFailed === "function") {
+        onFailed(data.error || "Failed to load scan results");
+      }
+    } catch (error) {
+      if (typeof onFailed === "function") {
+        onFailed(error.message || "Failed to load scan results");
+      }
+    }
+  });
+
+  source.addEventListener("failed", (event) => {
+    closeLiveStream(streamKey);
+    const payload = JSON.parse(event.data || "{}");
+    if (typeof onFailed === "function") {
+      onFailed(payload.error || payload.job?.error || "Scan failed");
+    }
+  });
+
+  source.onerror = () => {
+    closeLiveStream(streamKey);
+    if (typeof fallbackPoll === "function") {
+      fallbackPoll();
+    }
+  };
 }
 
 // =============================================
@@ -222,6 +463,134 @@ async function loadToolsConfig() {
 
   // Load SQLi tools dynamically
   await loadSQLiToolsConfig();
+}
+
+async function loadProfiles() {
+  try {
+    const response = await fetch(`${API_BASE_URL}/profiles`);
+    const data = await response.json();
+
+    if (!data.success) return;
+
+    profileOptions = data.profiles || [];
+    const targets = [
+      "subdomainProfile",
+      "pathProfile",
+      "xssProfile",
+      "sqliProfile",
+      "lfiProfile",
+    ];
+
+    targets.forEach((selectId) => {
+      const select = document.getElementById(selectId);
+      if (!select) return;
+
+      select.innerHTML = "";
+      profileOptions.forEach((profile) => {
+        const option = document.createElement("option");
+        option.value = profile.id;
+        option.textContent = profile.label;
+        option.title = profile.description || profile.label;
+        if (profile.id === (data.default || "standard")) {
+          option.selected = true;
+        }
+        select.appendChild(option);
+      });
+    });
+
+    bindProfileSelectors();
+    refreshProfileMeta();
+  } catch (error) {
+    console.error("Failed to load profiles:", error);
+    bindProfileSelectors();
+    refreshProfileMeta();
+  }
+}
+
+async function loadToolHealth() {
+  try {
+    const response = await fetch(`${API_BASE_URL}/tool-health`);
+    const data = await response.json();
+    if (!data.success) return;
+
+    const tbody = document.querySelector("#toolHealthTable tbody");
+    const summary = document.getElementById("tool-health-summary");
+    if (summary && data.summary) {
+      summary.textContent = `${data.summary.installed}/${data.summary.tools} tools installed`;
+    }
+
+    if (!tbody) return;
+    tbody.innerHTML = "";
+
+    Object.entries(data.modules || {}).forEach(([moduleName, tools]) => {
+      tools.forEach((tool) => {
+        const row = document.createElement("tr");
+        row.innerHTML = `
+          <td>${moduleName}</td>
+          <td>${tool.name}</td>
+          <td>${tool.installed ? "Installed" : "Missing"}</td>
+          <td>${tool.version || "Unknown"}</td>
+          <td><code>${tool.path || "-"}</code></td>
+        `;
+        tbody.appendChild(row);
+      });
+    });
+  } catch (error) {
+    console.error("Failed to load tool health:", error);
+  }
+}
+
+async function loadRecommendationSummary() {
+  const container = document.getElementById("recommendation-summary-content");
+  if (container) {
+    container.textContent = "Generating summary...";
+  }
+
+  try {
+    const response = await fetch(`${API_BASE_URL}/recommendations/summary`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({}),
+    });
+    const data = await response.json();
+
+    if (!data.success) {
+      if (container) {
+        container.textContent =
+          data.error || "No completed scans available yet.";
+      }
+      return;
+    }
+
+    const summary = data.summary || {};
+    const recommendations = summary.recommendations || [];
+    const topFindings = summary.top_findings || [];
+
+    if (container) {
+      container.innerHTML = `
+        <p><strong>${summary.headline || "Summary unavailable"}</strong></p>
+        <p>Risk posture: ${(summary.risk_posture || "info").toUpperCase()}</p>
+        <p>Total findings: ${summary.summary?.total_findings || 0}</p>
+        <ul>
+          ${recommendations
+            .slice(0, 5)
+            .map(
+              (item) =>
+                `<li>[${(item.priority || "info").toUpperCase()}] ${item.title} (${item.module || "combined"})</li>`,
+            )
+            .join("")}
+        </ul>
+        <p>Top findings tracked: ${topFindings.length}</p>
+      `;
+    }
+  } catch (error) {
+    if (container) {
+      container.textContent = "Failed to generate unified summary.";
+    }
+    console.error("Failed to load recommendation summary:", error);
+  }
 }
 
 async function loadXSSToolsConfig() {
@@ -367,6 +736,7 @@ async function handleSubdomainScan(event) {
       body: JSON.stringify({
         domain: domain,
         tools: selectedTools,
+        profile: getSelectedProfile("subdomainProfile"),
         parallel: true,
         validate_dns: true,
       }),
@@ -377,9 +747,38 @@ async function handleSubdomainScan(event) {
     if (data.success) {
       currentScanJobId = data.job_id;
       showNotification(`Scan started for ${domain}`, "success");
-
-      // Start polling for results
-      startPolling(data.job_id);
+      monitorJobLive({
+        streamKey: "subdomains",
+        eventUrl: data.event_url,
+        resultsUrl: data.results_url,
+        onProgress: (payload) => {
+          updateLoaderProgress(
+            "subdomain-loader",
+            payload.progress || 0,
+            "Running subdomain scan",
+          );
+        },
+        onComplete: (results) => {
+          hideLoader("subdomain-loader");
+          enableForm("subdomainForm");
+          subdomainResults = results.subdomains || [];
+          displaySubdomainResults(results);
+          statsData.subdomainsFound += subdomainResults.length;
+          statsData.highSeverity += results.summary?.severity?.high || 0;
+          statsData.totalScans++;
+          updateStatsDisplay();
+          showNotification(
+            `Scan completed! Found ${subdomainResults.length} subdomains`,
+            "success",
+          );
+        },
+        onFailed: (errorMessage) => {
+          hideLoader("subdomain-loader");
+          enableForm("subdomainForm");
+          showNotification(`Scan failed: ${errorMessage}`, "error");
+        },
+        fallbackPoll: () => startPolling(data.job_id),
+      });
     } else {
       throw new Error(data.error || "Failed to start scan");
     }
@@ -454,7 +853,7 @@ async function fetchScanResults(jobId) {
 
       // Update stats
       statsData.subdomainsFound += subdomainResults.length;
-      statsData.highSeverity += data.results.summary?.high_priority_count || 0;
+      statsData.highSeverity += data.results.summary?.severity?.high || 0;
       statsData.totalScans++;
       updateStatsDisplay();
 
@@ -503,6 +902,8 @@ function displaySubdomainResults(results) {
   if (resultsCard) {
     resultsCard.classList.remove("hidden");
   }
+
+  loadRecommendationSummary();
 }
 
 function renderSubdomainPage() {
@@ -692,6 +1093,7 @@ async function handlePathDiscovery(event) {
       body: JSON.stringify({
         url: url,
         tools: selectedPathTools,
+        profile: getSelectedProfile("pathProfile"),
       }),
     });
 
@@ -700,9 +1102,37 @@ async function handlePathDiscovery(event) {
     if (data.success) {
       currentPathJobId = data.job_id;
       showNotification(`Path discovery started for ${url}`, "success");
-
-      // Start polling for results
-      startPathPolling(data.job_id);
+      monitorJobLive({
+        streamKey: "paths",
+        eventUrl: data.event_url,
+        resultsUrl: data.results_url,
+        onProgress: (payload) => {
+          updateLoaderProgress(
+            "path-loader",
+            payload.progress || 0,
+            "Discovering paths and parameters",
+          );
+        },
+        onComplete: (results) => {
+          hideLoader("path-loader");
+          enableForm("pathForm");
+          pathResults = results;
+          displayPathResults(results);
+          const metrics = results.summary?.module_metrics || {};
+          const totalPaths = metrics.paths?.total || 0;
+          const totalParams = metrics.parameters?.total || 0;
+          showNotification(
+            `Scan completed! Found ${totalPaths} paths and ${totalParams} parameters`,
+            "success",
+          );
+        },
+        onFailed: (errorMessage) => {
+          hideLoader("path-loader");
+          enableForm("pathForm");
+          showNotification(`Path discovery failed: ${errorMessage}`, "error");
+        },
+        fallbackPoll: () => startPathPolling(data.job_id),
+      });
     } else {
       throw new Error(data.error || "Failed to start path discovery");
     }
@@ -777,8 +1207,9 @@ async function fetchPathResults(jobId) {
       pathResults = data.results;
       displayPathResults(data.results);
 
-      const totalPaths = data.results.summary?.paths?.total || 0;
-      const totalParams = data.results.summary?.parameters?.total || 0;
+      const metrics = data.results.summary?.module_metrics || {};
+      const totalPaths = metrics.paths?.total || 0;
+      const totalParams = metrics.parameters?.total || 0;
 
       showNotification(
         `Scan completed! Found ${totalPaths} paths and ${totalParams} parameters`,
@@ -838,6 +1269,8 @@ function displayPathResults(results) {
       );
     }
   }
+
+  loadRecommendationSummary();
 }
 
 function renderPathPage() {
@@ -1063,12 +1496,20 @@ function switchTab(tabName) {
       h1: "LFI Detection",
       desc: "Detect Local File Inclusion vulnerabilities",
     },
+    "tool-health": {
+      h1: "Tool Health",
+      desc: "Installed tools, versions, and resolved executable paths",
+    },
   };
 
   const titleData = titles[tabName];
   if (titleData) {
     document.getElementById("page-heading").textContent = titleData.h1;
     document.getElementById("page-desc").textContent = titleData.desc;
+  }
+
+  if (tabName === "tool-health") {
+    loadToolHealth();
   }
 }
 
@@ -1085,6 +1526,30 @@ function truncateText(text, maxLength) {
   if (!text) return "";
   if (text.length <= maxLength) return text;
   return text.substring(0, maxLength) + "...";
+}
+
+function getSeveritySummary(summary = {}) {
+  const severity = summary.severity || {};
+  const legacy = summary.module_metrics || summary;
+  return {
+    critical: severity.critical ?? legacy.critical ?? 0,
+    high: severity.high ?? legacy.high ?? legacy.high_severity ?? 0,
+    medium: severity.medium ?? legacy.medium ?? legacy.medium_severity ?? 0,
+    low: severity.low ?? legacy.low ?? legacy.low_severity ?? 0,
+    info: severity.info ?? legacy.info ?? 0,
+    total: summary.total_findings ?? legacy.total_findings ?? 0,
+  };
+}
+
+function getToolResultsList(toolResults) {
+  if (Array.isArray(toolResults)) {
+    return toolResults;
+  }
+
+  return Object.entries(toolResults || {}).map(([tool, details]) => ({
+    tool,
+    ...details,
+  }));
 }
 
 function showLoader(loaderId) {
@@ -1699,6 +2164,7 @@ async function handleXSSScan(event) {
       body: JSON.stringify({
         url: url,
         tools: selectedTools,
+        profile: getSelectedProfile("xssProfile"),
         check_dom: true,
         follow_redirects: true,
       }),
@@ -1709,9 +2175,34 @@ async function handleXSSScan(event) {
     if (data.success) {
       currentXSSJobId = data.job_id;
       showNotification(`XSS scan started for ${url}`, "success");
-
-      // Start polling for results
-      startXSSPollResults();
+      monitorJobLive({
+        streamKey: "xss",
+        eventUrl: data.event_url,
+        resultsUrl: data.results_url,
+        onProgress: (payload) => {
+          const progress = payload.progress || 0;
+          const progressBar = document.getElementById("xss-progress");
+          const progressText = document.getElementById("xss-progress-text");
+          if (progressBar) progressBar.style.width = `${progress}%`;
+          if (progressText) progressText.textContent = `${progress}%`;
+          updateLoaderProgress("xss-loader", progress, "Running XSS scan");
+        },
+        onComplete: (results) => {
+          hideLoader("xss-loader");
+          enableForm("xssForm");
+          displayXSSResults(results);
+          showNotification(
+            `XSS scan completed. Found ${results.findings?.length || 0} potential vulnerabilities.`,
+            "success",
+          );
+        },
+        onFailed: (errorMessage) => {
+          hideLoader("xss-loader");
+          enableForm("xssForm");
+          showNotification(errorMessage, "error");
+        },
+        fallbackPoll: () => startXSSPollResults(),
+      });
     } else {
       showNotification(data.message || "Failed to start XSS scan", "error");
       hideLoader("xss-loader");
@@ -1855,27 +2346,30 @@ function displayXSSResults(results) {
 
   // Update dashboard overview stats
   updateDashboardXSSStats(results);
+  loadRecommendationSummary();
 }
 
 function displayXSSSummary(results) {
   const summary = results.summary || {};
   const scanInfo = results.scan_info || {};
-  const toolResults = results.tool_results || {};
+  const toolResults = getToolResultsList(results.tool_results || {});
 
   const container = document.getElementById("xss-summary");
   if (!container) return;
   container.classList.remove("hidden");
 
   // Severity counts
-  const critical = summary.critical || 0;
-  const high = summary.high || 0;
-  const medium = summary.medium || 0;
-  const low = summary.low || 0;
-  const total = summary.total_findings || 0;
+  const severity = getSeveritySummary(summary);
+  const critical = severity.critical;
+  const high = severity.high;
+  const medium = severity.medium;
+  const low = severity.low;
+  const total = severity.total;
 
   // Tool stats
   let toolsHtml = "";
-  for (const [toolName, toolData] of Object.entries(toolResults)) {
+  for (const toolData of toolResults) {
+    const toolName = toolData.tool || "tool";
     const statusIcon = toolData.success
       ? '<i class="fa-solid fa-circle-check" style="color:#16a34a"></i>'
       : '<i class="fa-solid fa-circle-xmark" style="color:#dc2626"></i>';
@@ -1886,7 +2380,7 @@ function displayXSSSummary(results) {
       <div class="xss-tool-stat">
         <span class="xss-tool-stat-icon">${statusIcon}</span>
         <span class="xss-tool-stat-name">${toolName}</span>
-        <span class="xss-tool-stat-count">${toolData.findings_count || 0} findings</span>
+        <span class="xss-tool-stat-count">${toolData.items_found || toolData.findings_count || 0} findings</span>
         <span class="xss-tool-stat-time">${time}</span>
       </div>
     `;
@@ -1919,7 +2413,7 @@ function displayXSSSummary(results) {
       <h4><i class="fa-solid fa-wrench"></i> Tool Results</h4>
       <div class="xss-tools-list">${toolsHtml}</div>
       <div class="xss-scan-meta">
-        <span><i class="fa-solid fa-clock"></i> ${scanInfo.total_execution_time ? scanInfo.total_execution_time.toFixed(1) + "s" : "-"}</span>
+        <span><i class="fa-solid fa-clock"></i> ${scanInfo.execution_time ? scanInfo.execution_time.toFixed(1) + "s" : "-"}</span>
         <span><i class="fa-solid fa-globe"></i> ${scanInfo.target || "-"}</span>
       </div>
     </div>
@@ -1927,11 +2421,11 @@ function displayXSSSummary(results) {
 }
 
 function updateDashboardXSSStats(results) {
-  const summary = results.summary || {};
+  const severity = getSeveritySummary(results.summary || {});
   const statCards = document.querySelectorAll(".stat-value");
   if (statCards.length >= 3) {
     statsData.totalScans += 1;
-    statsData.highSeverity += (summary.critical || 0) + (summary.high || 0);
+    statsData.highSeverity += severity.critical + severity.high;
     statCards[0].textContent = statsData.totalScans;
     statCards[1].textContent = statsData.highSeverity;
   }
@@ -2271,6 +2765,7 @@ async function handleSQLiScan(event) {
       body: JSON.stringify({
         url: url,
         tools: selectedTools.length > 0 ? selectedTools : undefined,
+        profile: getSelectedProfile("sqliProfile"),
         intensity: intensity,
       }),
     });
@@ -2280,9 +2775,22 @@ async function handleSQLiScan(event) {
     if (data.success) {
       currentSQLiJobId = data.job_id;
       showNotification("SQL injection scan started successfully", "success");
-
-      // Start polling for results
-      startSQLiPolling();
+      monitorJobLive({
+        streamKey: "sqli",
+        eventUrl: data.event_url,
+        resultsUrl: data.results_url,
+        onProgress: (payload) => updateSQLiProgress(payload.job || payload),
+        onComplete: (results) => {
+          processSQLiResults(results);
+          showSQLiLoader(false);
+          showNotification("SQL injection scan completed!", "success");
+        },
+        onFailed: (errorMessage) => {
+          showSQLiLoader(false);
+          showNotification(`SQL injection scan failed: ${errorMessage}`, "error");
+        },
+        fallbackPoll: () => startSQLiPolling(),
+      });
     } else {
       throw new Error(data.error || "Failed to start SQL injection scan");
     }
@@ -2407,37 +2915,41 @@ function processSQLiResults(results) {
 
   // Update dashboard stats
   loadStats();
+  loadRecommendationSummary();
 }
 
 function updateSQLiSummary(summary, toolResults, scanInfo) {
+  const severity = getSeveritySummary(summary);
+  const moduleMetrics = summary.module_metrics || summary;
+  const toolResultsList = getToolResultsList(toolResults);
   // Update severity counts
   const criticalEl = document.getElementById("sqli-critical-count");
   const highEl = document.getElementById("sqli-high-count");
   const mediumEl = document.getElementById("sqli-medium-count");
   const lowEl = document.getElementById("sqli-low-count");
 
-  if (criticalEl) criticalEl.textContent = summary.critical || 0;
-  if (highEl) highEl.textContent = summary.high || 0;
-  if (mediumEl) mediumEl.textContent = summary.medium || 0;
-  if (lowEl) lowEl.textContent = summary.low || 0;
+  if (criticalEl) criticalEl.textContent = severity.critical;
+  if (highEl) highEl.textContent = severity.high;
+  if (mediumEl) mediumEl.textContent = severity.medium;
+  if (lowEl) lowEl.textContent = severity.low;
 
   // Update scan meta info
   const metaEl = document.getElementById("sqli-scan-meta");
   if (metaEl && scanInfo) {
-    const execTime = scanInfo.total_execution_time
-      ? `${scanInfo.total_execution_time}s`
+    const execTime = scanInfo.execution_time
+      ? `${scanInfo.execution_time}s`
       : "N/A";
     const toolsUsed = scanInfo.tools_used ? scanInfo.tools_used.length : 0;
     metaEl.innerHTML = `
       <span class="meta-badge"><i class="fa-solid fa-clock"></i> ${execTime}</span>
       <span class="meta-badge"><i class="fa-solid fa-tools"></i> ${toolsUsed} tools</span>
-      <span class="meta-badge"><i class="fa-solid fa-crosshairs"></i> ${summary.total_findings || 0} findings</span>
+      <span class="meta-badge"><i class="fa-solid fa-crosshairs"></i> ${severity.total} findings</span>
     `;
   }
 
   // Update tool results breakdown
   const toolsCardsEl = document.getElementById("sqli-tools-cards");
-  if (toolsCardsEl && toolResults) {
+  if (toolsCardsEl && toolResultsList) {
     toolsCardsEl.innerHTML = "";
     const toolIcons = {
       sqlmap: "fa-solid fa-database",
@@ -2450,7 +2962,8 @@ function updateSQLiSummary(summary, toolResults, scanInfo) {
       ghauri: "#2ecc71",
     };
 
-    for (const [toolName, stats] of Object.entries(toolResults)) {
+    for (const stats of toolResultsList) {
+      const toolName = stats.tool || "tool";
       const statusIcon = stats.success
         ? '<i class="fa-solid fa-circle-check" style="color:#16a34a"></i>'
         : '<i class="fa-solid fa-circle-xmark" style="color:#dc2626"></i>';
@@ -2492,7 +3005,7 @@ function updateSQLiSummary(summary, toolResults, scanInfo) {
 
   // Update injection types breakdown
   const typesTagsEl = document.getElementById("sqli-types-tags");
-  if (typesTagsEl && summary.by_type) {
+  if (typesTagsEl && moduleMetrics.by_type) {
     typesTagsEl.innerHTML = "";
     const typeColors = {
       "error-based": "#e74c3c",
@@ -2502,7 +3015,7 @@ function updateSQLiSummary(summary, toolResults, scanInfo) {
       stacked: "#c0392b",
       unknown: "#95a5a6",
     };
-    for (const [typeName, count] of Object.entries(summary.by_type)) {
+    for (const [typeName, count] of Object.entries(moduleMetrics.by_type)) {
       const tag = document.createElement("span");
       tag.className = "sqli-type-tag";
       tag.style.borderColor = typeColors[typeName] || "#64748b";
@@ -2516,7 +3029,7 @@ function updateSQLiSummary(summary, toolResults, scanInfo) {
   const typesBreakdown = document.getElementById("sqli-types-breakdown");
   if (typesBreakdown) {
     typesBreakdown.style.display =
-      summary.by_type && Object.keys(summary.by_type).length > 0
+      moduleMetrics.by_type && Object.keys(moduleMetrics.by_type).length > 0
         ? "block"
         : "none";
   }
@@ -2527,10 +3040,10 @@ function updateSQLiSummary(summary, toolResults, scanInfo) {
 
   if (riskValueEl && riskLevelEl) {
     let riskLevel = "none";
-    if (summary.critical > 0) riskLevel = "critical";
-    else if (summary.high > 0) riskLevel = "high";
-    else if (summary.medium > 0) riskLevel = "medium";
-    else if (summary.low > 0) riskLevel = "low";
+    if (severity.critical > 0) riskLevel = "critical";
+    else if (severity.high > 0) riskLevel = "high";
+    else if (severity.medium > 0) riskLevel = "medium";
+    else if (severity.low > 0) riskLevel = "low";
 
     const riskLabels = {
       none: "Clean",
@@ -3085,6 +3598,7 @@ async function handleLFIScan(event) {
     const requestBody = {
       url: url,
       tools: selectedTools,
+      profile: getSelectedProfile("lfiProfile"),
     };
 
     // Add parameters if provided
@@ -3105,9 +3619,34 @@ async function handleLFIScan(event) {
     if (data.success) {
       currentLFIJobId = data.job_id;
       showNotification(`LFI scan started for ${url}`, "success");
-
-      // Start polling for results
-      startLFIPollResults();
+      monitorJobLive({
+        streamKey: "lfi",
+        eventUrl: data.event_url,
+        resultsUrl: data.results_url,
+        onProgress: (payload) => {
+          const progress = payload.progress || 0;
+          const progressBar = document.getElementById("lfi-progress");
+          const progressText = document.getElementById("lfi-progress-text");
+          if (progressBar) progressBar.style.width = `${progress}%`;
+          if (progressText) progressText.textContent = `${progress}%`;
+          updateLoaderProgress("lfi-loader", progress, "Running LFI scan");
+        },
+        onComplete: (results) => {
+          hideLoader("lfi-loader");
+          enableForm("lfiForm");
+          displayLFIResults(results);
+          showNotification(
+            `LFI scan completed. Found ${results.findings?.length || 0} potential vulnerabilities.`,
+            "success",
+          );
+        },
+        onFailed: (errorMessage) => {
+          hideLoader("lfi-loader");
+          enableForm("lfiForm");
+          showNotification(errorMessage, "error");
+        },
+        fallbackPoll: () => startLFIPollResults(),
+      });
     } else {
       showNotification(data.message || "Failed to start LFI scan", "error");
       hideLoader("lfi-loader");
@@ -3234,28 +3773,33 @@ function displayLFIResults(results) {
 
   // Update dashboard overview stats (if applicable)
   updateDashboardLFIStats(results);
+  loadRecommendationSummary();
 }
 
 function displayLFISummary(results) {
   const summary = results.summary || {};
+  const severity = getSeveritySummary(summary);
+  const moduleMetrics = summary.module_metrics || {};
 
   const container = document.getElementById("lfi-summary");
   if (!container) return;
   container.classList.remove("hidden");
 
   // Severity counts
-  const high = summary.high_severity || 0;
-  const medium = summary.medium_severity || 0;
-  const low = summary.low_severity || 0;
-  const payloadsTested = summary.payloads_tested || 0;
+  const high = severity.high;
+  const medium = severity.medium;
+  const low = severity.low;
+  const payloadsTested = moduleMetrics.payloads_tested || 0;
 
   // Execution info
   const targetUrl = results.target_url || "-";
-  const paramsTested = summary.parameters_tested || 0;
-  const executionTime = results.execution_time
-    ? results.execution_time.toFixed(2) + "s"
+  const paramsTested = moduleMetrics.parameters_tested || 0;
+  const executionTime = results.scan_info?.execution_time
+    ? results.scan_info.execution_time.toFixed(2) + "s"
     : "-";
-  const toolsUsed = Object.keys(results.tool_results || {});
+  const toolsUsed = getToolResultsList(results.tool_results || {}).map(
+    (tool) => tool.tool,
+  );
 
   container.innerHTML = `
     <div class="lfi-summary-header">
@@ -3301,14 +3845,10 @@ function displayLFISummary(results) {
 }
 
 function updateDashboardLFIStats(results) {
-  const summary = results.summary || {};
+  const severity = getSeveritySummary(results.summary || {});
   const lfiStat = document.getElementById("stat-lfi-findings");
   if (lfiStat) {
-    const total =
-      (summary.high_severity || 0) +
-      (summary.medium_severity || 0) +
-      (summary.low_severity || 0);
-    lfiStat.textContent = total;
+    lfiStat.textContent = severity.total;
   }
 }
 
