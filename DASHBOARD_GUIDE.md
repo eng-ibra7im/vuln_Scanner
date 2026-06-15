@@ -274,7 +274,7 @@ vuln_Scanner/
 
 ---
 
-**تم التطوير بواسطة**: SecOps Pro Team  
+**تم التطوير بواسطة**: AI Vulnerability Hunter Team  
 **الإصدار**: 2.4.0 Professional Edition  
 **التاريخ**: فبراير 2026
 

@@ -128,7 +128,7 @@ class Config:
                 },
                 "ffuf": {
                     "enabled": False,  # Requires wordlist, disabled by default
-                    "wordlist": "wordlists/dns_common.txt",
+                    "wordlist": "wordlists/dns_comprehensive.txt",
                     "description": "DNS brute forcing",
                 },
             },
@@ -159,7 +159,7 @@ class Config:
                 },
                 "nuclei": {
                     "enabled": True,
-                    "templates": "http/vulnerabilities/xss/",
+                    "templates": "dast/vulnerabilities/xss/",
                     "description": "Fast vulnerability scanner with XSS templates",
                 },
                 "xsstrike": {
@@ -174,6 +174,10 @@ class Config:
                 },
                 "nuclei": {
                     "enabled": True,
+                    "templates": [
+                        "dast/vulnerabilities/sqli/",
+                        "http/vulnerabilities/generic/error-based-sql-injection.yaml",
+                    ],
                     "description": "Fast template-based SQLi scanning",
                 },
                 "ghauri": {

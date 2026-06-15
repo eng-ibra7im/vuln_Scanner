@@ -13,7 +13,7 @@ import asyncio
 import time
 import re
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional, Tuple
 from dataclasses import dataclass, asdict
 from pathlib import Path
@@ -22,6 +22,7 @@ import logging
 
 from config import Config
 from logging_utils import configure_logger
+from tooling import resolve_tool_path
 
 
 @dataclass
@@ -92,8 +93,6 @@ class LFIOrchestrator:
         self.generic_signatures = [
             "<?php",
             "<?xml",
-            "<!DOCTYPE",
-            "<html",
         ]
 
     def _get_lfi_tools_config(self) -> Dict[str, Dict[str, Any]]:
@@ -208,6 +207,7 @@ class LFIOrchestrator:
         # DotDotPwn - Automated traversal directory detection
         if (
             lfi_tools.get("dotdotpwn", {}).get("enabled", False)
+            and lfi_tools.get("dotdotpwn", {}).get("installed", False)
         ):
             for param in parameters:
                 parsed = urlparse(target_url)
@@ -217,7 +217,8 @@ class LFIOrchestrator:
                     ExecutionPlan(
                         tool="dotdotpwn",
                         command=[
-                            "dotdotpwn",
+                            "perl",
+                            resolve_tool_path("dotdotpwn"),
                             "-m",
                             "http-url",
                             "-h",
@@ -324,7 +325,14 @@ class LFIOrchestrator:
             "../../../var/log/apache2/error.log",
         ]
 
-        async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
+        import httpx
+        httpx_kwargs = {"timeout": 30.0}
+        if httpx.__version__ >= "0.20.0":
+            httpx_kwargs["follow_redirects"] = True
+        else:
+            httpx_kwargs["allow_redirects"] = True
+            
+        async with httpx.AsyncClient(**httpx_kwargs) as client:
             for param in parameters:
                 self.logger.info(
                     f"Testing parameter '{param}' with {len(payloads)} payloads"
@@ -753,7 +761,7 @@ class LFIOrchestrator:
             "success": True,
             "scan_type": "lfi_detection",
             "target_url": target_url,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "execution_time": round(execution_time, 2),
             "summary": {
                 "total_findings": len(all_findings),

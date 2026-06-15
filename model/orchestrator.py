@@ -21,6 +21,7 @@ from config import Config
 from analyzer import SubdomainAnalyzer
 from formatter import ResultFormatter
 from logging_utils import configure_logger
+from tooling import is_tool_installed, resolve_tool_path
 
 
 @dataclass
@@ -28,6 +29,7 @@ class ExecutionPlan:
     """Represents an execution plan for subdomain enumeration"""
 
     tool: str
+    target_domain: str
     command: List[str]
     timeout: int
     priority: int
@@ -83,7 +85,11 @@ class SubdomainOrchestrator:
             plans.append(
                 ExecutionPlan(
                     tool="subfinder",
-                    command=["subfinder", "-d", target_domain, "-silent", "-all"],
+                    target_domain=target_domain,
+                    command=self._build_tool_command(
+                        "subfinder",
+                        ["-d", target_domain, "-silent", "-all"],
+                    ),
                     timeout=300,
                     priority=1,
                     description="Passive subdomain discovery using multiple sources",
@@ -94,12 +100,16 @@ class SubdomainOrchestrator:
         if self.config.tools.get("amass", {}).get("enabled", False):
             amass_mode = self.config.tools["amass"].get("mode", "passive")
             # amass v4.2+: -passive is deprecated (passive is the default)
-            cmd = ["amass", "enum", "-d", target_domain, "-timeout", "5"]
+            cmd = self._build_tool_command(
+                "amass",
+                ["enum", "-d", target_domain, "-timeout", "5"],
+            )
             if amass_mode == "active":
                 cmd.append("-active")
             plans.append(
                 ExecutionPlan(
                     tool="amass",
+                    target_domain=target_domain,
                     command=cmd,
                     timeout=600,
                     priority=2,
@@ -109,18 +119,15 @@ class SubdomainOrchestrator:
 
         # Sublist3r - Multi-source enumeration
         if self.config.tools.get("sublist3r", {}).get("enabled", False):
+            engines = self._get_sublist3r_engines()
+            sublist3r_args = ["-d", target_domain, "-o", "-"]
+            if engines:
+                sublist3r_args.extend(["-e", ",".join(engines)])
             plans.append(
                 ExecutionPlan(
                     tool="sublist3r",
-                    command=[
-                        "python",
-                        "-m",
-                        "sublist3r",
-                        "-d",
-                        target_domain,
-                        "-o",
-                        "-",
-                    ],
+                    target_domain=target_domain,
+                    command=self._build_tool_command("sublist3r", sublist3r_args),
                     timeout=300,
                     priority=3,
                     description="Subdomain discovery using search engines and DNS",
@@ -132,7 +139,11 @@ class SubdomainOrchestrator:
             plans.append(
                 ExecutionPlan(
                     tool="assetfinder",
-                    command=["assetfinder", "--subs-only", target_domain],
+                    target_domain=target_domain,
+                    command=self._build_tool_command(
+                        "assetfinder",
+                        ["--subs-only", target_domain],
+                    ),
                     timeout=180,
                     priority=1,
                     description="Quick passive subdomain discovery",
@@ -150,22 +161,25 @@ class SubdomainOrchestrator:
                 plans.append(
                     ExecutionPlan(
                         tool="ffuf",
-                        command=[
+                        target_domain=target_domain,
+                        command=self._build_tool_command(
                             "ffuf",
-                            "-w",
-                            str(wordlist_path),
-                            "-u",
-                            f"http://FUZZ.{target_domain}",
-                            "-mc",
-                            "200,301,302,403",
-                            "-fs",
-                            "0",
-                            "-t",
-                            "50",
-                            "-json",
-                            "-noninteractive",
-                            "-ic",
-                        ],
+                            [
+                                "-w",
+                                str(wordlist_path),
+                                "-u",
+                                f"http://FUZZ.{target_domain}",
+                                "-mc",
+                                "200,301,302,403",
+                                "-fs",
+                                "0",
+                                "-t",
+                                "50",
+                                "-json",
+                                "-noninteractive",
+                                "-ic",
+                            ],
+                        ),
                         timeout=900,
                         priority=4,
                         description="DNS brute forcing with wordlist",
@@ -182,6 +196,44 @@ class SubdomainOrchestrator:
             self.logger.info(f"  [{plan.priority}] {plan.tool}: {plan.description}")
 
         return plans
+
+    def _build_tool_command(self, tool_name: str, args: List[str]) -> List[str]:
+        """Build a runnable command using the resolved executable path."""
+        import sys
+
+        executable = resolve_tool_path(tool_name)
+        executable_path = Path(executable)
+
+        if executable_path.suffix.lower() == ".py":
+            return [sys.executable, executable, *args]
+
+        return [executable, *args]
+
+    def _get_sublist3r_engines(self) -> List[str]:
+        """Return a stable set of Sublist3r engines.
+
+        DNSdumpster is excluded by default because it currently causes
+        uncaught CSRF parsing failures in the upstream tool.
+        """
+        configured = self.config.tools.get("sublist3r", {}).get("engines")
+        if isinstance(configured, str):
+            engines = [engine.strip() for engine in configured.split(",") if engine.strip()]
+            return engines
+        if isinstance(configured, list):
+            return [str(engine).strip() for engine in configured if str(engine).strip()]
+
+        return [
+            "baidu",
+            "yahoo",
+            "google",
+            "bing",
+            "ask",
+            "netcraft",
+            "virustotal",
+            "threatcrowd",
+            "ssl",
+            "passivedns",
+        ]
 
     def _run_subprocess_sync(self, command, timeout):
         """Run subprocess synchronously (Windows compatible)"""
@@ -217,11 +269,8 @@ class SubdomainOrchestrator:
         start_time = time.time()
 
         try:
-            # Check if tool exists first
-            import shutil
-
-            tool_executable = plan.command[0]
-            if not shutil.which(tool_executable) and tool_executable not in ["python"]:
+            # Check if the tool exists first using the normalized resolver.
+            if not is_tool_installed(plan.tool):
                 # Tool not found - use API fallback for supported tools
                 execution_time = time.time() - start_time
                 self.logger.warning(f"{plan.tool} not found - tool not installed")
@@ -239,7 +288,7 @@ class SubdomainOrchestrator:
                     success=False,
                     subdomains=[],
                     execution_time=execution_time,
-                    error=f"Tool not installed: {tool_executable}. Run install_tools.ps1 or use API mode.",
+                    error=f"Tool not installed: {plan.tool}. Run install_tools.ps1 or use API mode.",
                 )
 
             # Execute the command with subprocess.run via asyncio.to_thread (Windows compatible)
@@ -270,7 +319,12 @@ class SubdomainOrchestrator:
             if raw_output:
                 self.logger.info(f"{plan.tool} stdout preview: {raw_output[:500]}")
 
-            subdomains = self._parse_tool_output(plan.tool, raw_output, stderr_output)
+            subdomains = self._parse_tool_output(
+                plan.tool,
+                raw_output,
+                stderr_output,
+                plan.target_domain,
+            )
 
             success = len(subdomains) > 0 or result.returncode == 0
 
@@ -308,7 +362,13 @@ class SubdomainOrchestrator:
                 error=str(e),
             )
 
-    def _parse_tool_output(self, tool: str, output: str, stderr: str = "") -> List[str]:
+    def _parse_tool_output(
+        self,
+        tool: str,
+        output: str,
+        stderr: str = "",
+        target_domain: str | None = None,
+    ) -> List[str]:
         """
         Parse tool output to extract subdomains.
 
@@ -333,14 +393,19 @@ class SubdomainOrchestrator:
                     data = json.loads(line)
                     # Extract host from ffuf JSON result
                     host = data.get("host", "")
-                    if host and "." in host:
-                        subdomains.append(host.lower())
+                    normalized = self._normalize_subdomain_candidate(host, target_domain)
+                    if normalized:
+                        subdomains.append(normalized)
                     elif "url" in data:
                         url = data["url"]
                         if "//" in url:
                             host = url.split("//")[1].split("/")[0]
-                            if "." in host:
-                                subdomains.append(host.lower())
+                            normalized = self._normalize_subdomain_candidate(
+                                host,
+                                target_domain,
+                            )
+                            if normalized:
+                                subdomains.append(normalized)
                 except (json.JSONDecodeError, KeyError):
                     pass
 
@@ -370,10 +435,17 @@ class SubdomainOrchestrator:
                                 r"^([a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$",
                                 candidate,
                             ):
-                                subdomains.append(candidate.lower())
+                                normalized = self._normalize_subdomain_candidate(
+                                    candidate,
+                                    target_domain,
+                                )
+                                if normalized:
+                                    subdomains.append(normalized)
                 elif "." in line and " " not in line:
                     # Simple one-subdomain-per-line format (older versions)
-                    subdomains.append(line.lower())
+                    normalized = self._normalize_subdomain_candidate(line, target_domain)
+                    if normalized:
+                        subdomains.append(normalized)
 
         else:
             # subfinder, assetfinder, sublist3r: one subdomain per line
@@ -381,9 +453,9 @@ class SubdomainOrchestrator:
                 line = line.strip()
                 if not line:
                     continue
-                # Basic validation: should look like a domain
-                if "." in line and " " not in line:
-                    subdomains.append(line.lower())
+                normalized = self._normalize_subdomain_candidate(line, target_domain)
+                if normalized:
+                    subdomains.append(normalized)
 
         # Deduplicate while preserving order
         seen = set()
@@ -395,6 +467,51 @@ class SubdomainOrchestrator:
 
         self.logger.info(f"{tool} parser extracted {len(unique)} unique subdomains")
         return unique
+
+    def _normalize_subdomain_candidate(
+        self,
+        candidate: str,
+        target_domain: str | None,
+    ) -> str | None:
+        """Normalize a candidate string into a valid subdomain or reject it."""
+        import re
+        from urllib.parse import urlparse
+
+        if not candidate:
+            return None
+
+        value = candidate.strip().lower().strip(".,")
+        if not value:
+            return None
+
+        if "://" in value:
+            value = urlparse(value).hostname or ""
+
+        if not value or "@" in value:
+            return None
+
+        if value.startswith("*."):
+            value = value[2:]
+
+        if ":" in value:
+            value = value.split(":", 1)[0]
+
+        hostname_pattern = re.compile(
+            r"^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$"
+        )
+        if not hostname_pattern.match(value):
+            return None
+
+        if not target_domain:
+            return value
+
+        target = target_domain.strip().lower()
+        if value == target:
+            return None
+        if not value.endswith(f".{target}"):
+            return None
+
+        return value
 
     async def execute_all(self, plans: List[ExecutionPlan]) -> List[ToolResult]:
         """

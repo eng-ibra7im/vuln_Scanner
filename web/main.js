@@ -75,6 +75,16 @@ const PROFILE_SELECT_MODULES = {
   sqliProfile: "sqli",
   lfiProfile: "lfi",
 };
+const XSS_REMEDIATION_ADVICE = {
+  reflected:
+    "Implement proper input validation and output encoding. Use Content-Security-Policy headers.",
+  stored:
+    "Sanitize all user input before storage. Encode output when rendering. Implement CSP.",
+  dom:
+    "Avoid using innerHTML with user input. Use textContent instead. Sanitize DOM manipulation.",
+  blind:
+    "Implement strict CSP. Monitor for outbound connections. Validate all inputs server-side.",
+};
 
 // =============================================
 // Initialization
@@ -86,18 +96,18 @@ document.addEventListener("DOMContentLoaded", () => {
 async function initializeApp() {
   console.log("🚀 Initializing SecOps Dashboard...");
 
+  // Setup form handlers immediately to prevent page refresh on early submission
+  setupFormHandlers();
+
   // Check API health
   await checkAPIHealth();
 
   // Load initial data
   await loadStats();
-  await loadToolsConfig();
   await loadProfiles();
+  await loadToolsConfig();
   await loadToolHealth();
   await loadRecommendationSummary();
-
-  // Setup form handlers
-  setupFormHandlers();
 
   // Initialize chart
   initializeChart();
@@ -113,69 +123,33 @@ function absoluteApiUrl(path) {
   return `${window.location.origin}${path}`;
 }
 
-function getSelectedProfile(selectId) {
-  return document.getElementById(selectId)?.value || "standard";
+function getSelectedProfile(controlId) {
+  const control = document.getElementById(controlId);
+  if (!control) return "standard";
+
+  if (control.matches?.("select")) {
+    return control.value || "standard";
+  }
+
+  return (
+    control.querySelector('input[type="radio"]:checked')?.value ||
+    control.dataset.defaultProfile ||
+    "standard"
+  );
 }
 
-function getProfilePresetTone(profileId) {
-  if (profileId === "quick") return "Fast";
-  if (profileId === "deep") return "Thorough";
-  return "Balanced";
+function getProfileSummary(profile) {
+  if (profile?.id === "quick") return "Fast scan.";
+  if (profile?.id === "deep") return "Deep scan.";
+  return "Balanced scan.";
 }
 
-function buildProfileChips(profile, moduleName) {
-  const moduleConfig = profile?.modules?.[moduleName] || {};
-  const chips = [];
-  const tools = Array.isArray(moduleConfig.tools) ? moduleConfig.tools : [];
+function renderProfileMeta(controlId) {
+  const control = document.getElementById(controlId);
+  const meta = document.getElementById(`${controlId}Meta`);
+  const moduleName = PROFILE_SELECT_MODULES[controlId];
 
-  if (tools.length) {
-    chips.push({
-      icon: "fa-solid fa-screwdriver-wrench",
-      label: `${tools.length} tools`,
-    });
-  }
-
-  if (moduleConfig.parallel === true) {
-    chips.push({
-      icon: "fa-solid fa-bolt",
-      label: "Parallel",
-    });
-  }
-
-  if (moduleConfig.validate_dns === true) {
-    chips.push({
-      icon: "fa-solid fa-shield-check",
-      label: "DNS validation",
-    });
-  }
-
-  if (typeof moduleConfig.intensity === "string") {
-    chips.push({
-      icon: "fa-solid fa-gauge-high",
-      label:
-        moduleConfig.intensity === "aggressive"
-          ? "Aggressive"
-          : moduleConfig.intensity.charAt(0).toUpperCase() +
-            moduleConfig.intensity.slice(1),
-    });
-  }
-
-  if (moduleName === "lfi" && tools.includes("custom")) {
-    chips.push({
-      icon: "fa-solid fa-shield-halved",
-      label: "Signature checks",
-    });
-  }
-
-  return chips;
-}
-
-function renderProfileMeta(selectId) {
-  const select = document.getElementById(selectId);
-  const meta = document.getElementById(`${selectId}Meta`);
-  const moduleName = PROFILE_SELECT_MODULES[selectId];
-
-  if (!select || !meta || !moduleName) {
+  if (!control || !meta || !moduleName) {
     return;
   }
 
@@ -186,64 +160,43 @@ function renderProfileMeta(selectId) {
     modules: {},
   };
   const profile =
-    profileOptions.find((item) => item.id === select.value) ||
+    profileOptions.find((item) => item.id === getSelectedProfile(controlId)) ||
     profileOptions.find((item) => item.id === "standard") ||
     fallbackProfile;
 
-  meta.replaceChildren();
+  meta.textContent = getProfileSummary(profile);
+}
 
-  const topRow = document.createElement("div");
-  topRow.className = "profile-meta-top";
+function createProfileRadioOption(controlId, profile, defaultProfile) {
+  const item = document.createElement("label");
+  item.className = "profile-radio-option";
+  item.title = profile.description || profile.label || profile.id;
 
-  const badge = document.createElement("span");
-  badge.className = `profile-pill profile-pill-${profile.id || "standard"}`;
-  badge.textContent = profile.label || "Standard";
+  const input = document.createElement("input");
+  input.type = "radio";
+  input.name = controlId;
+  input.value = profile.id;
+  input.checked = profile.id === defaultProfile;
 
-  const mode = document.createElement("span");
-  mode.className = "profile-meta-mode";
-  mode.textContent = getProfilePresetTone(profile.id);
+  const title = document.createElement("span");
+  title.className = "profile-radio-title";
+  title.textContent = profile.label || profile.id;
 
-  topRow.appendChild(badge);
-  topRow.appendChild(mode);
+  item.appendChild(input);
+  item.appendChild(title);
 
-  const description = document.createElement("p");
-  description.textContent =
-    profile.description || "Balanced coverage for regular assessments.";
-
-  const chipsWrap = document.createElement("div");
-  chipsWrap.className = "profile-meta-chips";
-
-  const chips = buildProfileChips(profile, moduleName);
-  chips.forEach((chip) => {
-    const item = document.createElement("span");
-    item.className = "profile-meta-chip";
-
-    const icon = document.createElement("i");
-    icon.className = chip.icon;
-    icon.setAttribute("aria-hidden", "true");
-
-    const text = document.createElement("span");
-    text.textContent = chip.label;
-
-    item.appendChild(icon);
-    item.appendChild(text);
-    chipsWrap.appendChild(item);
-  });
-
-  meta.appendChild(topRow);
-  meta.appendChild(description);
-  meta.appendChild(chipsWrap);
+  return item;
 }
 
 function bindProfileSelectors() {
-  Object.keys(PROFILE_SELECT_MODULES).forEach((selectId) => {
-    const select = document.getElementById(selectId);
-    if (!select || select.dataset.profileBound === "true") {
+  Object.keys(PROFILE_SELECT_MODULES).forEach((controlId) => {
+    const control = document.getElementById(controlId);
+    if (!control || control.dataset.profileBound === "true") {
       return;
     }
 
-    select.addEventListener("change", () => renderProfileMeta(selectId));
-    select.dataset.profileBound = "true";
+    control.addEventListener("change", () => renderProfileMeta(controlId));
+    control.dataset.profileBound = "true";
   });
 }
 
@@ -481,20 +434,31 @@ async function loadProfiles() {
       "lfiProfile",
     ];
 
-    targets.forEach((selectId) => {
-      const select = document.getElementById(selectId);
-      if (!select) return;
+    const profiles = profileOptions.length
+      ? profileOptions
+      : [
+          {
+            id: "standard",
+            label: "Standard",
+            description: "Balanced coverage for regular assessments.",
+          },
+        ];
+    const defaultProfile = profiles.some(
+      (profile) => profile.id === (data.default || "standard"),
+    )
+      ? data.default || "standard"
+      : profiles[0].id;
 
-      select.innerHTML = "";
-      profileOptions.forEach((profile) => {
-        const option = document.createElement("option");
-        option.value = profile.id;
-        option.textContent = profile.label;
-        option.title = profile.description || profile.label;
-        if (profile.id === (data.default || "standard")) {
-          option.selected = true;
-        }
-        select.appendChild(option);
+    targets.forEach((controlId) => {
+      const control = document.getElementById(controlId);
+      if (!control) return;
+
+      control.innerHTML = "";
+      control.dataset.defaultProfile = defaultProfile;
+      profiles.forEach((profile) => {
+        control.appendChild(
+          createProfileRadioOption(controlId, profile, defaultProfile),
+        );
       });
     });
 
@@ -540,11 +504,45 @@ async function loadToolHealth() {
   }
 }
 
+function recommendationTone(value) {
+  const normalized = String(value || "info").toLowerCase();
+  if (normalized.includes("critical")) return "critical";
+  if (normalized.includes("high")) return "high";
+  if (normalized.includes("medium")) return "medium";
+  if (normalized.includes("low")) return "low";
+  return "info";
+}
+
+function formatSummaryNumber(value) {
+  const number = Number(value || 0);
+  return Number.isFinite(number) ? number.toLocaleString() : "0";
+}
+
+function renderRecommendationMessage(container, state, title, message) {
+  container.className = `recommendation-summary recommendation-summary-${state}`;
+  container.innerHTML = `
+    <div class="recommendation-message">
+      <i class="fa-solid ${
+        state === "loading" ? "fa-circle-notch fa-spin" : "fa-circle-info"
+      }"></i>
+      <div>
+        <strong>${escapeHtml(title)}</strong>
+        <span>${escapeHtml(message)}</span>
+      </div>
+    </div>
+  `;
+}
+
 async function loadRecommendationSummary() {
   const container = document.getElementById("recommendation-summary-content");
-  if (container) {
-    container.textContent = "Generating summary...";
-  }
+  if (!container) return;
+
+  renderRecommendationMessage(
+    container,
+    "loading",
+    "Generating unified summary",
+    "Correlating completed scan results and recommended next actions.",
+  );
 
   try {
     const response = await fetch(`${API_BASE_URL}/recommendations/summary`, {
@@ -557,38 +555,94 @@ async function loadRecommendationSummary() {
     const data = await response.json();
 
     if (!data.success) {
-      if (container) {
-        container.textContent =
-          data.error || "No completed scans available yet.";
-      }
+      renderRecommendationMessage(
+        container,
+        "empty",
+        "No completed scans available yet.",
+        data.error || "Run at least one scan to build a unified summary.",
+      );
       return;
     }
 
     const summary = data.summary || {};
     const recommendations = summary.recommendations || [];
     const topFindings = summary.top_findings || [];
+    const modules = Array.isArray(summary.modules) ? summary.modules : [];
+    const totalFindings =
+      summary.summary?.total_findings ?? summary.total_findings ?? 0;
+    const riskTone = recommendationTone(summary.risk_posture);
+    const riskLabel = String(summary.risk_posture || "info").toUpperCase();
+    const modulePills = modules.length
+      ? modules
+          .slice(0, 5)
+          .map((moduleName) => `<span>${escapeHtml(moduleName)}</span>`)
+          .join("")
+      : "<span>combined</span>";
+    const recommendationItems = recommendations
+      .slice(0, 5)
+      .map((item, index) => {
+        const priorityTone = recommendationTone(item.priority);
+        const priority = String(item.priority || "info").toUpperCase();
+        return `
+          <li class="recommendation-action-item recommendation-action-${priorityTone}">
+            <span class="recommendation-action-index">${index + 1}</span>
+            <div class="recommendation-action-body">
+              <div class="recommendation-action-meta">
+                <span class="recommendation-priority">${escapeHtml(priority)}</span>
+                <span>${escapeHtml(item.module || "combined")}</span>
+              </div>
+              <strong>${escapeHtml(item.title || "Review scan output")}</strong>
+            </div>
+          </li>
+        `;
+      })
+      .join("");
 
-    if (container) {
-      container.innerHTML = `
-        <p><strong>${summary.headline || "Summary unavailable"}</strong></p>
-        <p>Risk posture: ${(summary.risk_posture || "info").toUpperCase()}</p>
-        <p>Total findings: ${summary.summary?.total_findings || 0}</p>
-        <ul>
-          ${recommendations
-            .slice(0, 5)
-            .map(
-              (item) =>
-                `<li>[${(item.priority || "info").toUpperCase()}] ${item.title} (${item.module || "combined"})</li>`,
-            )
-            .join("")}
-        </ul>
-        <p>Top findings tracked: ${topFindings.length}</p>
-      `;
-    }
+    container.className = `recommendation-summary recommendation-summary-ready recommendation-risk-${riskTone}`;
+    container.innerHTML = `
+      <div class="recommendation-overview">
+        <div class="recommendation-headline">
+          <span class="recommendation-kicker">
+            <i class="fa-solid fa-shield-halved"></i>
+            Unified risk review
+          </span>
+          <h4>${escapeHtml(summary.headline || "Summary unavailable")}</h4>
+          <div class="recommendation-module-pills">${modulePills}</div>
+        </div>
+        <div class="recommendation-metrics" aria-label="Recommendation metrics">
+          <div>
+            <span class="recommendation-metric-label">Risk posture</span>
+            <strong class="recommendation-risk-pill">${escapeHtml(riskLabel)}</strong>
+          </div>
+          <div>
+            <span class="recommendation-metric-label">Total findings</span>
+            <strong>${formatSummaryNumber(totalFindings)}</strong>
+          </div>
+          <div>
+            <span class="recommendation-metric-label">Tracked findings</span>
+            <strong>${formatSummaryNumber(topFindings.length)}</strong>
+          </div>
+        </div>
+      </div>
+      <div class="recommendation-actions">
+        <div class="recommendation-section-title">
+          <span>Recommended next actions</span>
+          <small>${formatSummaryNumber(recommendations.length)} total</small>
+        </div>
+        ${
+          recommendationItems
+            ? `<ol>${recommendationItems}</ol>`
+            : `<div class="recommendation-no-actions">No recommended actions returned.</div>`
+        }
+      </div>
+    `;
   } catch (error) {
-    if (container) {
-      container.textContent = "Failed to generate unified summary.";
-    }
+    renderRecommendationMessage(
+      container,
+      "empty",
+      "Failed to generate unified summary.",
+      "Check the API response, then try generating the summary again.",
+    );
     console.error("Failed to load recommendation summary:", error);
   }
 }
@@ -2431,6 +2485,39 @@ function updateDashboardXSSStats(results) {
   }
 }
 
+function getXSSFindingUrl(finding) {
+  return finding?.url || finding?.details?.url || finding?.locator || finding?.asset || "";
+}
+
+function getXSSFindingType(finding) {
+  return (
+    finding?.xss_type ||
+    finding?.vulnerability_type ||
+    finding?.kind ||
+    finding?.details?.xss_type ||
+    finding?.details?.vulnerability_type ||
+    "Unknown"
+  );
+}
+
+function getXSSFindingConfidence(finding) {
+  return finding?.confidence || finding?.status || finding?.details?.confidence || null;
+}
+
+function getXSSFindingTool(finding) {
+  return (
+    finding?.tool ||
+    finding?.detection_tool ||
+    finding?.details?.tool ||
+    finding?.details?.detection_tool ||
+    "Unknown"
+  );
+}
+
+function getXSSFindingParameter(finding) {
+  return finding?.parameter || finding?.details?.parameter || "-";
+}
+
 function updateXSSResultsTable() {
   const tbody = document.querySelector("#xssResultsTable tbody");
   if (!tbody) return;
@@ -2447,7 +2534,7 @@ function updateXSSResultsTable() {
   if (pageFindings.length === 0) {
     tbody.innerHTML = `
       <tr>
-        <td colspan="6" style="text-align: center; padding: 20px; color: #64748b;">
+        <td colspan="7" style="text-align: center; padding: 20px; color: #64748b;">
           No XSS vulnerabilities detected
         </td>
       </tr>
@@ -2455,19 +2542,36 @@ function updateXSSResultsTable() {
   } else {
     pageFindings.forEach((finding) => {
       const row = document.createElement("tr");
-
+      const findingUrl = getXSSFindingUrl(finding);
+      const findingType = getXSSFindingType(finding);
+      const findingConfidenceValue = getXSSFindingConfidence(finding);
+      const findingTool = getXSSFindingTool(finding);
+      const findingParameter = getXSSFindingParameter(finding);
       const severityClass = getSeverityClass(finding.severity);
-      const confidenceClass = getConfidenceClass(finding.confidence);
+      const confidenceClass = getConfidenceClass(findingConfidenceValue);
+      const urlMarkup = findingUrl
+        ? `<div class="url-cell"><a href="${escapeHtml(findingUrl)}" target="_blank" class="url-link" title="${escapeHtml(findingUrl)}">${escapeHtml(truncateURL(findingUrl))}</a></div>`
+        : "-";
 
       row.innerHTML = `
-        <td><a href="${escapeHtml(finding.url)}" target="_blank" class="url-link">${escapeHtml(truncateURL(finding.url))}</a></td>
-        <td><span class="xss-type-badge">${escapeHtml(finding.xss_type || "Unknown")}</span></td>
+        <td>${urlMarkup}</td>
+        <td><span class="xss-type-badge">${escapeHtml(findingType)}</span></td>
         <td><span class="severity-badge ${severityClass}">${escapeHtml(finding.severity || "Unknown")}</span></td>
-        <td>${escapeHtml(finding.parameter || "-")}</td>
-        <td><span class="confidence-badge ${confidenceClass}">${findingConfidence(finding.confidence)}</span></td>
-        <td><span class="tool-badge">${escapeHtml(finding.tool || "Unknown")}</span></td>
+        <td><span class="parameter-badge">${escapeHtml(findingParameter)}</span></td>
+        <td><span class="confidence-badge ${confidenceClass}">${findingConfidence(findingConfidenceValue)}</span></td>
+        <td><span class="tool-badge">${escapeHtml(findingTool)}</span></td>
+        <td>
+          <button class="action-btn btn-icon view-details-btn" title="View Details">
+            <i class="fa-solid fa-eye"></i>
+          </button>
+        </td>
       `;
       tbody.appendChild(row);
+      
+      const viewBtn = row.querySelector('.view-details-btn');
+      if (viewBtn) {
+        viewBtn.addEventListener('click', () => viewXSSDetails(finding));
+      }
     });
   }
 
@@ -2589,10 +2693,10 @@ function filterXSSResults() {
   } else {
     allXSSFindings = xssResults.filter(
       (finding) =>
-        finding.url?.toLowerCase().includes(searchTerm) ||
-        finding.xss_type?.toLowerCase().includes(searchTerm) ||
-        finding.parameter?.toLowerCase().includes(searchTerm) ||
-        finding.tool?.toLowerCase().includes(searchTerm),
+        getXSSFindingUrl(finding).toLowerCase().includes(searchTerm) ||
+        getXSSFindingType(finding).toLowerCase().includes(searchTerm) ||
+        getXSSFindingParameter(finding).toLowerCase().includes(searchTerm) ||
+        getXSSFindingTool(finding).toLowerCase().includes(searchTerm),
     );
   }
 
@@ -2668,12 +2772,12 @@ function exportXSSResultsPDF() {
             .map(
               (f) => `
             <tr>
-              <td>${escapeHtml(f.url)}</td>
-              <td>${escapeHtml(f.xss_type || "Unknown")}</td>
+              <td>${escapeHtml(getXSSFindingUrl(f))}</td>
+              <td>${escapeHtml(getXSSFindingType(f))}</td>
               <td class="severity-${(f.severity || "").toLowerCase()}">${escapeHtml(f.severity || "Unknown")}</td>
-              <td>${escapeHtml(f.parameter || "-")}</td>
-              <td>${findingConfidence(f.confidence)}</td>
-              <td>${escapeHtml(f.tool || "Unknown")}</td>
+              <td>${escapeHtml(getXSSFindingParameter(f))}</td>
+              <td>${findingConfidence(getXSSFindingConfidence(f))}</td>
+              <td>${escapeHtml(getXSSFindingTool(f))}</td>
             </tr>
           `,
             )
@@ -2686,6 +2790,87 @@ function exportXSSResultsPDF() {
   printWindow.document.close();
   printWindow.print();
   showNotification("Print dialog opened", "success");
+}
+
+function viewXSSDetails(finding) {
+  const findingUrl = getXSSFindingUrl(finding);
+  const findingType = getXSSFindingType(finding);
+  const findingConfidenceValue = getXSSFindingConfidence(finding);
+  const findingTool = getXSSFindingTool(finding);
+  const findingParameter = getXSSFindingParameter(finding);
+  const severityClass = getSeverityClass(finding.severity);
+  const confidenceClass = getConfidenceClass(findingConfidenceValue);
+
+  let evidence = finding.evidence || finding.details?.evidence || "No evidence provided.";
+  let payload = finding.payload || finding.details?.payload || "No payload provided.";
+  let remediation =
+    finding.remediation ||
+    finding.details?.remediation ||
+    XSS_REMEDIATION_ADVICE[String(findingType).toLowerCase()] ||
+    XSS_REMEDIATION_ADVICE.reflected;
+
+  const modalHtml = `
+    <div class="sqli-modal-overlay" id="xssDetailsModal" onclick="if(event.target === this) this.remove()">
+      <div class="sqli-modal">
+        <div class="sqli-modal-header">
+          <h3><i class="fa-solid fa-bug"></i> XSS Finding Details</h3>
+          <button class="sqli-modal-close" onclick="document.getElementById('xssDetailsModal').remove()">
+            <i class="fa-solid fa-times"></i>
+          </button>
+        </div>
+        <div class="sqli-modal-body">
+          <div class="sqli-detail-grid">
+            <div class="sqli-detail-section">
+              <h4><i class="fa-solid fa-info-circle"></i> Basic Information</h4>
+              <div class="sqli-detail-row">
+                <label>URL</label>
+                <div class="url-code">${findingUrl ? `<a href="${escapeHtml(findingUrl)}" target="_blank">${escapeHtml(findingUrl)}</a>` : "-"}</div>
+              </div>
+              <div class="sqli-detail-row">
+                <label>Parameter</label>
+                <span class="parameter-badge">${escapeHtml(findingParameter)}</span>
+              </div>
+              <div class="sqli-detail-row">
+                <label>XSS Type</label>
+                <span class="xss-type-badge">${escapeHtml(findingType)}</span>
+              </div>
+              <div class="sqli-detail-row">
+                <label>Detection Tool</label>
+                <span class="tool-badge">${escapeHtml(findingTool)}</span>
+              </div>
+              <div class="sqli-detail-badges">
+                <div class="sqli-detail-badge-group">
+                  <label>Severity</label>
+                  <span class="severity-badge ${severityClass}">${escapeHtml(finding.severity || "Unknown")}</span>
+                </div>
+                <div class="sqli-detail-badge-group">
+                  <label>Confidence</label>
+                  <span class="confidence-badge ${confidenceClass}">${findingConfidence(findingConfidenceValue)}</span>
+                </div>
+              </div>
+            </div>
+            
+            <div class="sqli-detail-section sqli-detail-main">
+              <h4><i class="fa-solid fa-code"></i> Payload</h4>
+              <pre class="sqli-detail-code">${escapeHtml(payload)}</pre>
+            </div>
+
+            <div class="sqli-detail-section">
+              <h4><i class="fa-solid fa-shield-halved"></i> Remediation</h4>
+              <pre class="sqli-detail-evidence">${escapeHtml(remediation)}</pre>
+            </div>
+            
+            <div class="sqli-detail-section">
+              <h4><i class="fa-solid fa-magnifying-glass"></i> Evidence / Snippet</h4>
+              <pre class="sqli-detail-evidence">${escapeHtml(evidence)}</pre>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  document.body.insertAdjacentHTML("beforeend", modalHtml);
 }
 
 function clearXSSResults() {
@@ -3097,10 +3282,8 @@ function displaySQLiPage() {
 function createSQLiResultRow(finding) {
   const row = document.createElement("tr");
 
-  // Get severity class for styling
-  const sevLower = (finding.severity || "unknown").toLowerCase();
+  const sevLower = (finding.severity || finding.details?.severity || "unknown").toLowerCase();
   const severityClass = `severity-${sevLower}`;
-  row.classList.add(severityClass);
 
   // Confidence color mapping
   const confColors = {
@@ -3109,54 +3292,85 @@ function createSQLiResultRow(finding) {
     medium: "#d97706",
     low: "#94a3b8",
   };
+  const confRaw = (finding.confidence || finding.status || finding.details?.confidence || "Unknown").toString();
   const confColor =
-    confColors[(finding.confidence || "").toLowerCase()] || "#64748b";
+    confColors[confRaw.toLowerCase()] || "#64748b";
 
   // Database icon mapping
+  const dbTypeRaw = (finding.database_type || finding.details?.database_type || finding.dbms || finding.details?.dbms || "Unknown").toString();
+  const dbLower = dbTypeRaw.toLowerCase();
   const dbIcons = {
     mysql: "🐬",
     postgresql: "🐘",
     mssql: "🔷",
     oracle: "🔶",
     sqlite: "📦",
+    unknown: "❓",
   };
-  const dbIcon = dbIcons[(finding.database_type || "").toLowerCase()] || "💾";
+  const dbIcon = dbIcons[dbLower] || "💾";
+  const displayDb = dbLower === "unknown" ? "Unknown DB" : dbTypeRaw.charAt(0).toUpperCase() + dbTypeRaw.slice(1);
 
+  // Format Injection Type
+  const injTypeRaw = (finding.injection_type || finding.details?.injection_type || finding.sqli_type || finding.details?.sqli_type || finding.type || finding.kind || "Unknown").toString();
+  const displayInjType = injTypeRaw.toLowerCase() === "unknown" ? "Unclassified" : 
+      injTypeRaw.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join('-');
+
+  // Format Tool
+  const toolRaw = (finding.tool || finding.details?.tool || finding.detection_tool || finding.details?.detection_tool || "Unknown").toString();
+  const displayTool = toolRaw.toLowerCase() === "unknown" ? "Unknown Tool" : 
+      toolRaw.charAt(0).toUpperCase() + toolRaw.slice(1);
+
+  // Fallback logic if Target URL is missing, we can try to extract from finding or finding.url
+  const targetUrl = finding.url || finding.details?.url || finding.locator || finding.asset || "N/A";
+
+  // Format Severity and Confidence
+  const displaySev = sevLower === "unknown" ? "Unknown" : sevLower.charAt(0).toUpperCase() + sevLower.slice(1);
+  const displayConf = confRaw.toLowerCase() === "unknown" ? "Unknown" : confRaw.charAt(0).toUpperCase() + confRaw.slice(1);
+
+  const detailPayload = finding.details?.payload || finding.payload || "N/A";
+  
   row.innerHTML = `
     <td>
       <div class="url-cell">
-        <span class="url-text" title="${finding.url || "N/A"}">${truncateText(finding.url || "N/A", 45)}</span>
+        <span class="url-text" title="${targetUrl}">${truncateText(targetUrl, 45)}</span>
       </div>
     </td>
     <td>
       <span class="parameter-badge">${finding.parameter || "N/A"}</span>
     </td>
     <td>
-      <span class="injection-type">${finding.injection_type || finding.sqli_type || "Unknown"}</span>
+      <span class="injection-type">${displayInjType}</span>
     </td>
     <td>
-      <span class="severity-badge ${severityClass}">${finding.severity || "Unknown"}</span>
+      <span class="severity-badge ${severityClass}">${displaySev}</span>
     </td>
     <td>
-      <span class="confidence-badge" style="border-color:${confColor};color:${confColor}">${finding.confidence || "Unknown"}</span>
+      <span class="confidence-badge" style="border-color:${confColor};color:${confColor}">${displayConf}</span>
     </td>
     <td>
-      <span class="database-badge">${dbIcon} ${finding.database_type || "Unknown"}</span>
+      <span class="database-badge">${dbIcon} ${displayDb}</span>
     </td>
     <td>
-      <span class="tool-badge">${finding.tool || finding.detection_tool || "Unknown"}</span>
+      <span class="tool-badge">${displayTool}</span>
     </td>
     <td>
       <div class="action-buttons">
-        <button class="btn-sm btn-info" onclick="showSQLiDetails('${encodeURIComponent(JSON.stringify(finding))}')" title="View Details">
+        <button class="btn-icon" style="color: #3b82f6; border-color: #bfdbfe;" onclick="showSQLiDetails(this.dataset.finding)" title="View Details">
           <i class="fa-solid fa-eye"></i>
         </button>
-        <button class="btn-sm btn-secondary" onclick="copySQLiPayload('${encodeURIComponent(finding.payload || "")}')" title="Copy Payload">
+        <button class="btn-icon" style="color: #64748b; border-color: #e2e8f0;" onclick="copySQLiPayload(this.dataset.payload)" title="Copy Payload">
           <i class="fa-solid fa-copy"></i>
         </button>
       </div>
     </td>
   `;
+
+  // Use dataset to store data to avoid quote escaping issues in HTML attributes
+  const eyeBtn = row.querySelector('.fa-eye').parentElement;
+  const copyBtn = row.querySelector('.fa-copy').parentElement;
+  
+  eyeBtn.dataset.finding = encodeURIComponent(JSON.stringify(finding));
+  copyBtn.dataset.payload = encodeURIComponent(detailPayload);
 
   return row;
 }
@@ -3169,38 +3383,66 @@ function showSQLiDetails(encodedFinding) {
 
     if (!modal || !body) return;
 
-    const sevClass = `severity-${(finding.severity || "unknown").toLowerCase()}`;
+    const sevLower = (finding.severity || finding.details?.severity || "unknown").toLowerCase();
+    const displaySev = sevLower === "unknown" ? "Unknown" : sevLower.charAt(0).toUpperCase() + sevLower.slice(1);
+    const sevClass = `severity-${sevLower}`;
+
     const confPercent = {
       confirmed: "100%",
       high: "85%",
       medium: "65%",
       low: "45%",
     };
-    const confVal = confPercent[finding.confidence] || "N/A";
+    
+    // Format values nicely
+    const confRaw = (finding.confidence || finding.status || finding.details?.confidence || "Unknown").toString().toLowerCase();
+    const confVal = confPercent[confRaw] || "N/A";
+    const displayConf = (confRaw === "unknown" || confRaw === "n/a" || confRaw === "") ? "Unknown" : confRaw.charAt(0).toUpperCase() + confRaw.slice(1);
+
+    const injTypeRaw = (finding.injection_type || finding.details?.injection_type || finding.sqli_type || finding.details?.sqli_type || finding.type || finding.kind || "Unknown").toString();
+    const displayInjType = (injTypeRaw.toLowerCase() === "unknown" || injTypeRaw.toLowerCase() === "n/a") ? "Unclassified" : 
+        injTypeRaw.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join('-');
+
+    const dbTypeRaw = (finding.database_type || finding.details?.database_type || finding.dbms || finding.details?.dbms || "Unknown").toString();
+    const displayDb = (dbTypeRaw.toLowerCase() === "unknown" || dbTypeRaw.toLowerCase() === "n/a") ? "Unknown DB" : 
+        dbTypeRaw.charAt(0).toUpperCase() + dbTypeRaw.slice(1);
+        
+    const toolRaw = (finding.tool || finding.details?.tool || finding.detection_tool || finding.details?.detection_tool || "Unknown").toString();
+    const displayTool = (toolRaw.toLowerCase() === "unknown" || toolRaw.toLowerCase() === "n/a") ? "Unknown Tool" : 
+        toolRaw.charAt(0).toUpperCase() + toolRaw.slice(1);
+
+    // Fallback logic if Target URL is missing, we can try to extract from finding or finding.url
+    const targetUrl = finding.url || finding.details?.url || finding.locator || finding.asset || "N/A";
+    const detailPayload = finding.payload || finding.details?.payload || "N/A";
+    const cweId = finding.cwe_id || finding.details?.cwe_id || "CWE-89";
+    const cvssScore = finding.cvss_score || finding.details?.cvss_score || "N/A";
+    const evidenceText = finding.evidence || finding.details?.evidence || "N/A";
+    const remediationText = finding.remediation || finding.details?.remediation || "Use parameterized queries/prepared statements.";
+    const parameterText = finding.parameter || finding.details?.parameter || "N/A";
 
     body.innerHTML = `
       <div class="sqli-detail-grid">
         <div class="sqli-detail-section sqli-detail-main">
           <div class="sqli-detail-row">
             <label>Target URL</label>
-            <div class="sqli-detail-url">${finding.url || "N/A"}</div>
+            <div class="sqli-detail-url">${targetUrl}</div>
           </div>
           <div class="sqli-detail-row">
             <label>Parameter</label>
-            <span class="parameter-badge">${finding.parameter || "N/A"}</span>
+            <span class="parameter-badge">${parameterText}</span>
           </div>
           <div class="sqli-detail-badges">
             <div class="sqli-detail-badge-group">
               <label>Severity</label>
-              <span class="severity-badge ${sevClass}">${finding.severity || "Unknown"}</span>
+              <span class="severity-badge ${sevClass}">${displaySev}</span>
             </div>
             <div class="sqli-detail-badge-group">
               <label>Confidence</label>
-              <span class="confidence-badge">${finding.confidence || "Unknown"} (${confVal})</span>
+              <span class="confidence-badge">${displayConf} ${confVal !== "N/A" ? `(${confVal})` : ''}</span>
             </div>
             <div class="sqli-detail-badge-group">
               <label>CVSS Score</label>
-              <span class="sqli-cvss-badge">${finding.cvss_score || "N/A"}</span>
+              <span class="sqli-cvss-badge">${cvssScore}</span>
             </div>
           </div>
         </div>
@@ -3209,35 +3451,35 @@ function showSQLiDetails(encodedFinding) {
           <h4><i class="fa-solid fa-fingerprint"></i> Classification</h4>
           <div class="sqli-detail-row">
             <label>Injection Type</label>
-            <span class="injection-type">${finding.injection_type || finding.sqli_type || "Unknown"}</span>
+            <span class="injection-type">${displayInjType}</span>
           </div>
           <div class="sqli-detail-row">
             <label>Database Type</label>
-            <span class="database-badge">${finding.database_type || "Unknown"}</span>
+            <span class="database-badge">${displayDb}</span>
           </div>
           <div class="sqli-detail-row">
             <label>Detection Tool</label>
-            <span class="tool-badge">${finding.tool || finding.detection_tool || "Unknown"}</span>
+            <span class="tool-badge">${displayTool}</span>
           </div>
           <div class="sqli-detail-row">
             <label>CWE ID</label>
-            <a href="https://cwe.mitre.org/data/definitions/89.html" target="_blank" class="sqli-cwe-link">${finding.cwe_id || "CWE-89"}</a>
+            <a href="https://cwe.mitre.org/data/definitions/89.html" target="_blank" class="sqli-cwe-link">${cweId}</a>
           </div>
         </div>
 
         <div class="sqli-detail-section">
           <h4><i class="fa-solid fa-terminal"></i> Payload</h4>
-          <pre class="sqli-detail-code">${escapeHtml(finding.payload || "N/A")}</pre>
+          <pre class="sqli-detail-code">${escapeHtml(detailPayload)}</pre>
         </div>
 
         <div class="sqli-detail-section">
           <h4><i class="fa-solid fa-magnifying-glass"></i> Evidence</h4>
-          <pre class="sqli-detail-evidence">${escapeHtml(finding.evidence || "N/A")}</pre>
+          <pre class="sqli-detail-evidence">${escapeHtml(evidenceText)}</pre>
         </div>
 
         <div class="sqli-detail-section sqli-detail-remediation">
           <h4><i class="fa-solid fa-shield-halved"></i> Remediation</h4>
-          <p>${finding.remediation || "Use parameterized queries/prepared statements."}</p>
+          <p>${remediationText}</p>
         </div>
       </div>
     `;
@@ -3286,46 +3528,98 @@ function copySQLiPayload(encodedPayload) {
 }
 
 function updateSQLiPagination() {
-  const pageInfo = document.getElementById("sqliPageInfo");
-  const prevButton = document.getElementById("sqliPrevPage");
-  const nextButton = document.getElementById("sqliNextPage");
-
-  if (pageInfo) {
-    pageInfo.textContent = `Page ${sqliCurrentPage} of ${sqliTotalPages}`;
+  const info = document.getElementById("sqliPaginationInfo") || document.getElementById("sqliPageInfo");
+  if (info) {
+    const total = sqliResults ? sqliResults.length : 0;
+    if (total === 0) {
+      info.textContent = "Showing 0 results";
+    } else {
+      const start = (sqliCurrentPage - 1) * sqliPageSize + 1;
+      const end = Math.min(sqliCurrentPage * sqliPageSize, total);
+      info.textContent = `Showing ${start}-${end} of ${total} results`;
+    }
   }
 
-  if (prevButton) {
-    prevButton.disabled = sqliCurrentPage <= 1;
-  }
+  const prevBtn = document.getElementById("sqliPrevBtn") || document.getElementById("sqliPrevPage");
+  const nextBtn = document.getElementById("sqliNextBtn") || document.getElementById("sqliNextPage");
+  const pageNumbers = document.getElementById("sqliPageNumbers");
 
-  if (nextButton) {
-    nextButton.disabled = sqliCurrentPage >= sqliTotalPages;
+  if (prevBtn) prevBtn.disabled = sqliCurrentPage === 1;
+  if (nextBtn) nextBtn.disabled = sqliCurrentPage === sqliTotalPages || sqliTotalPages === 0;
+
+  if (pageNumbers) {
+    pageNumbers.innerHTML = "";
+    
+    let startPage = Math.max(1, sqliCurrentPage - 2);
+    let endPage = Math.min(sqliTotalPages, sqliCurrentPage + 2);
+    
+    if (sqliCurrentPage <= 3) {
+      endPage = Math.min(5, sqliTotalPages);
+    }
+    if (sqliCurrentPage >= sqliTotalPages - 2) {
+      startPage = Math.max(1, sqliTotalPages - 4);
+    }
+
+    if (startPage > 1) {
+      pageNumbers.appendChild(createSQLiPageBtn(1));
+      if (startPage > 2) {
+        const ellipsis = document.createElement("span");
+        ellipsis.className = "pagination-ellipsis";
+        ellipsis.textContent = "...";
+        pageNumbers.appendChild(ellipsis);
+      }
+    }
+
+    for (let i = startPage; i <= endPage; i++) {
+      pageNumbers.appendChild(createSQLiPageBtn(i));
+    }
+
+    if (endPage < sqliTotalPages) {
+      if (endPage < sqliTotalPages - 1) {
+        const ellipsis = document.createElement("span");
+        ellipsis.className = "pagination-ellipsis";
+        ellipsis.textContent = "...";
+        pageNumbers.appendChild(ellipsis);
+      }
+      pageNumbers.appendChild(createSQLiPageBtn(sqliTotalPages));
+    }
   }
+}
+
+function createSQLiPageBtn(pageNum) {
+  const btn = document.createElement("button");
+  btn.className = `pagination-page-btn ${pageNum === sqliCurrentPage ? "active" : ""}`;
+  btn.textContent = pageNum;
+  btn.onclick = () => {
+    sqliCurrentPage = pageNum;
+    displaySQLiPage();
+    updateSQLiPagination();
+  };
+  return btn;
 }
 
 function filterSQLiResults() {
   const searchTerm =
     document.getElementById("sqliSearch")?.value.toLowerCase() || "";
+  const severityFilter = 
+    document.getElementById("sqliSeverityFilter")?.value.toLowerCase() || "all";
 
-  if (!searchTerm) {
-    sqliResults = [...allSQLiFindings];
-  } else {
-    sqliResults = allSQLiFindings.filter(
-      (finding) =>
-        (finding.url && finding.url.toLowerCase().includes(searchTerm)) ||
-        (finding.parameter &&
-          finding.parameter.toLowerCase().includes(searchTerm)) ||
-        (finding.injection_type &&
-          finding.injection_type.toLowerCase().includes(searchTerm)) ||
-        (finding.severity &&
-          finding.severity.toLowerCase().includes(searchTerm)) ||
-        (finding.database_type &&
-          finding.database_type.toLowerCase().includes(searchTerm)) ||
-        (finding.tool && finding.tool.toLowerCase().includes(searchTerm)) ||
-        (finding.detection_tool &&
-          finding.detection_tool.toLowerCase().includes(searchTerm)),
+  sqliResults = allSQLiFindings.filter((finding) => {
+    const matchesSearch = !searchTerm || (
+      (finding.url && finding.url.toLowerCase().includes(searchTerm)) ||
+      (finding.parameter && finding.parameter.toLowerCase().includes(searchTerm)) ||
+      (finding.injection_type && finding.injection_type.toLowerCase().includes(searchTerm)) ||
+      (finding.severity && finding.severity.toLowerCase().includes(searchTerm)) ||
+      (finding.database_type && finding.database_type.toLowerCase().includes(searchTerm)) ||
+      (finding.tool && finding.tool.toLowerCase().includes(searchTerm)) ||
+      (finding.detection_tool && finding.detection_tool.toLowerCase().includes(searchTerm))
     );
-  }
+    
+    const matchesSeverity = severityFilter === "all" || 
+      (finding.severity && finding.severity.toLowerCase() === severityFilter);
+      
+    return matchesSearch && matchesSeverity;
+  });
 
   sqliCurrentPage = 1;
   sqliTotalPages = Math.ceil((sqliResults.length || 1) / sqliPageSize);
@@ -3790,55 +4084,82 @@ function displayLFISummary(results) {
   const medium = severity.medium;
   const low = severity.low;
   const payloadsTested = moduleMetrics.payloads_tested || 0;
+  const statusTone = high > 0 ? "high" : medium > 0 ? "medium" : "clean";
+  const statusLabel =
+    high > 0 || medium > 0 ? "Review required" : "No confirmed LFI";
 
   // Execution info
   const targetUrl = results.target_url || "-";
   const paramsTested = moduleMetrics.parameters_tested || 0;
-  const executionTime = results.scan_info?.execution_time
-    ? results.scan_info.execution_time.toFixed(2) + "s"
+  const rawExecutionTime = Number(results.scan_info?.execution_time || 0);
+  const executionTime = rawExecutionTime
+    ? `${rawExecutionTime.toFixed(2)}s`
     : "-";
   const toolsUsed = getToolResultsList(results.tool_results || {}).map(
     (tool) => tool.tool,
   );
+  const toolsMarkup = toolsUsed.length
+    ? toolsUsed
+        .map((toolName) => `<span>${escapeHtml(toolName)}</span>`)
+        .join("")
+    : "<span>-</span>";
 
   container.innerHTML = `
     <div class="lfi-summary-header">
-      <h3><i class="fa-solid fa-chart-simple"></i> Scan Summary</h3>
+      <div>
+        <span class="lfi-summary-kicker">Local file inclusion scan</span>
+        <h3><i class="fa-solid fa-chart-simple"></i> Scan Summary</h3>
+      </div>
+      <span class="lfi-summary-status lfi-summary-status-${statusTone}">
+        ${statusLabel}
+      </span>
     </div>
     <div class="lfi-summary-stats">
       <div class="lfi-stat-card lfi-stat-high">
-        <span class="lfi-stat-number">${high}</span>
-        <span class="lfi-stat-label">High Severity</span>
+        <span class="lfi-stat-icon"><i class="fa-solid fa-fire"></i></span>
+        <div>
+          <span class="lfi-stat-number">${formatSummaryNumber(high)}</span>
+          <span class="lfi-stat-label">High Severity</span>
+        </div>
       </div>
       <div class="lfi-stat-card lfi-stat-medium">
-        <span class="lfi-stat-number">${medium}</span>
-        <span class="lfi-stat-label">Medium Severity</span>
+        <span class="lfi-stat-icon"><i class="fa-solid fa-triangle-exclamation"></i></span>
+        <div>
+          <span class="lfi-stat-number">${formatSummaryNumber(medium)}</span>
+          <span class="lfi-stat-label">Medium Severity</span>
+        </div>
       </div>
       <div class="lfi-stat-card lfi-stat-low">
-        <span class="lfi-stat-number">${low}</span>
-        <span class="lfi-stat-label">Low Severity</span>
+        <span class="lfi-stat-icon"><i class="fa-solid fa-circle-info"></i></span>
+        <div>
+          <span class="lfi-stat-number">${formatSummaryNumber(low)}</span>
+          <span class="lfi-stat-label">Low Severity</span>
+        </div>
       </div>
       <div class="lfi-stat-card lfi-stat-payloads">
-        <span class="lfi-stat-number">${payloadsTested}</span>
-        <span class="lfi-stat-label">Payloads Tested</span>
+        <span class="lfi-stat-icon"><i class="fa-solid fa-vial"></i></span>
+        <div>
+          <span class="lfi-stat-number">${formatSummaryNumber(payloadsTested)}</span>
+          <span class="lfi-stat-label">Payloads Tested</span>
+        </div>
       </div>
     </div>
     <div class="lfi-scan-meta">
-      <div class="lfi-meta-item">
-        <span class="lfi-meta-label"><i class="fa-solid fa-globe"></i> Target URL:</span>
-        <span class="lfi-meta-value">${escapeHtml(targetUrl)}</span>
+      <div class="lfi-meta-item lfi-meta-target">
+        <span class="lfi-meta-label"><i class="fa-solid fa-globe"></i> Target URL</span>
+        <code class="lfi-meta-value">${escapeHtml(targetUrl)}</code>
       </div>
       <div class="lfi-meta-item">
-        <span class="lfi-meta-label"><i class="fa-solid fa-list"></i> Parameters Tested:</span>
-        <span class="lfi-meta-value">${paramsTested}</span>
+        <span class="lfi-meta-label"><i class="fa-solid fa-list-check"></i> Parameters Tested</span>
+        <span class="lfi-meta-value">${formatSummaryNumber(paramsTested)}</span>
       </div>
       <div class="lfi-meta-item">
-        <span class="lfi-meta-label"><i class="fa-solid fa-clock"></i> Execution Time:</span>
+        <span class="lfi-meta-label"><i class="fa-solid fa-clock"></i> Execution Time</span>
         <span class="lfi-meta-value">${executionTime}</span>
       </div>
-      <div class="lfi-meta-item">
-        <span class="lfi-meta-label"><i class="fa-solid fa-wrench"></i> Tools Used:</span>
-        <span class="lfi-meta-value">${toolsUsed.join(", ") || "-"}</span>
+      <div class="lfi-meta-item lfi-meta-tools">
+        <span class="lfi-meta-label"><i class="fa-solid fa-wrench"></i> Tools Used</span>
+        <span class="lfi-tool-chips">${toolsMarkup}</span>
       </div>
     </div>
   `;
@@ -3885,15 +4206,21 @@ function updateLFIResultsTable() {
         ? truncateText(finding.evidence, 50)
         : "-";
 
+      let rawPayload = finding.payload || finding.details?.payload || "-";
+      let decodedPayload = rawPayload;
+      if (/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(rawPayload) && rawPayload.length >= 8 && rawPayload !== "-") {
+        try { decodedPayload = atob(rawPayload); } catch(e) {}
+      }
+
       row.innerHTML = `
         <td><code>${escapeHtml(finding.parameter || "-")}</code></td>
-        <td><code class="lfi-payload">${escapeHtml(truncateText(finding.payload, 40))}</code></td>
+        <td><code class="lfi-payload" title="${escapeHtml(decodedPayload)}">${escapeHtml(truncateText(decodedPayload, 40))}</code></td>
         <td><span class="severity-badge ${severityClass}">${escapeHtml(finding.severity || "Unknown")}</span></td>
         <td><span class="confidence-badge ${confidenceClass}">${escapeHtml(finding.confidence || "Unknown")}</span></td>
         <td><small>${escapeHtml(evidenceText)}</small></td>
         <td><span class="tool-badge">${escapeHtml(finding.tool || "Unknown")}</span></td>
         <td>
-          <button class="action-btn" onclick="viewLFIDetails(${JSON.stringify(finding).replace(/"/g, "&quot;")})" title="View Details">
+          <button class="action-btn btn-icon" onclick="viewLFIDetails(${JSON.stringify(finding).replace(/"/g, "&quot;")})" title="View Details">
             <i class="fa-solid fa-eye"></i>
           </button>
         </td>
@@ -4032,16 +4359,23 @@ function exportLFIResultsPDF() {
         <tbody>
           ${allLFIFindings
             .map(
-              (f) => `
+              (f) => {
+                let rawPayload = f.payload || f.details?.payload || "-";
+                let decodedPayload = rawPayload;
+                if (/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(rawPayload) && rawPayload.length >= 8 && rawPayload !== "-") {
+                  try { decodedPayload = atob(rawPayload); } catch(e) {}
+                }
+                return `
             <tr>
               <td><code>${escapeHtml(f.parameter || "-")}</code></td>
-              <td><code>${escapeHtml(f.payload || "-")}</code></td>
+              <td><code>${escapeHtml(decodedPayload)}</code></td>
               <td class="severity-${(f.severity || "").toLowerCase()}">${escapeHtml(f.severity || "Unknown")}</td>
               <td>${escapeHtml(f.confidence || "Unknown")}</td>
               <td>${escapeHtml(truncateText(f.evidence, 60) || "-")}</td>
               <td>${escapeHtml(f.tool || "Unknown")}</td>
             </tr>
-          `,
+          `;
+              }
             )
             .join("")}
         </tbody>
@@ -4090,33 +4424,64 @@ function clearLFIResults() {
 }
 
 function viewLFIDetails(finding) {
-  // Create a modal or alert to show full finding details
-  const detailsHtml = `
-    <strong>Parameter:</strong> ${escapeHtml(finding.parameter || "-")}<br>
-    <strong>Payload:</strong> <code>${escapeHtml(finding.payload || "-")}</code><br>
-    <strong>Severity:</strong> ${escapeHtml(finding.severity || "Unknown")}<br>
-    <strong>Confidence:</strong> ${escapeHtml(finding.confidence || "Unknown")}<br>
-    <strong>Tool:</strong> ${escapeHtml(finding.tool || "Unknown")}<br>
-    <strong>Evidence:</strong><br><pre>${escapeHtml(finding.evidence || "-")}</pre>
-  `;
+  const severityClass = getSeverityClass(finding.severity);
+  const confidenceClass = getConfidenceClass(finding.confidence);
 
-  const modal = document.createElement("div");
-  modal.style.cssText = `
-    position: fixed; top: 0; left: 0; right: 0; bottom: 0; 
-    background: rgba(0,0,0,0.5); display: flex; align-items: center; 
-    justify-content: center; z-index: 10000;
-  `;
-  modal.innerHTML = `
-    <div style="background: white; padding: 20px; border-radius: 8px; max-width: 600px; max-height: 80vh; overflow-y: auto;">
-      <h3 style="margin-top: 0;">LFI Finding Details</h3>
-      <div>${detailsHtml}</div>
-      <button onclick="this.closest('div').parentElement.remove()" style="margin-top: 15px; padding: 8px 16px; background: #3b82f6; color: white; border: none; border-radius: 4px; cursor: pointer;">Close</button>
+  let rawPayload = finding.payload || finding.details?.payload || "-";
+  let decodedPayload = rawPayload;
+  if (/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(rawPayload) && rawPayload.length >= 8 && rawPayload !== "-") {
+    try { decodedPayload = atob(rawPayload); } catch(e) {}
+  }
+
+  const modalHtml = `
+    <div class="sqli-modal-overlay" id="lfiDetailsModal" onclick="if(event.target === this) this.remove()">
+      <div class="sqli-modal">
+        <div class="sqli-modal-header">
+          <h3><i class="fa-solid fa-shield-halved"></i> LFI Finding Details</h3>
+          <button class="sqli-modal-close" onclick="document.getElementById('lfiDetailsModal').remove()">
+            <i class="fa-solid fa-times"></i>
+          </button>
+        </div>
+        <div class="sqli-modal-body">
+          <div class="sqli-detail-grid">
+            <div class="sqli-detail-section">
+              <h4><i class="fa-solid fa-info-circle"></i> Basic Information</h4>
+              <div class="sqli-detail-row">
+                <label>Parameter</label>
+                <code>${escapeHtml(finding.parameter || "-")}</code>
+              </div>
+              <div class="sqli-detail-row">
+                <label>Tool</label>
+                <span class="tool-badge">${escapeHtml(finding.tool || "Unknown")}</span>
+              </div>
+              <div class="sqli-detail-badges">
+                <div class="sqli-detail-badge-group">
+                  <label>Severity</label>
+                  <span class="severity-badge ${severityClass}">${escapeHtml(finding.severity || "Unknown")}</span>
+                </div>
+                <div class="sqli-detail-badge-group">
+                  <label>Confidence</label>
+                  <span class="confidence-badge ${confidenceClass}">${escapeHtml(finding.confidence || "Unknown")}</span>
+                </div>
+              </div>
+            </div>
+            
+            <div class="sqli-detail-section sqli-detail-main">
+              <h4><i class="fa-solid fa-code"></i> Payload</h4>
+              <pre class="sqli-detail-code">${escapeHtml(decodedPayload)}</pre>
+            </div>
+            
+            <div class="sqli-detail-section">
+              <h4><i class="fa-solid fa-file-code"></i> Evidence / Snippet</h4>
+              <pre class="sqli-detail-evidence">${escapeHtml(finding.evidence || "No evidence available.")}</pre>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   `;
-  document.body.appendChild(modal);
-  modal.onclick = (e) => {
-    if (e.target === modal) modal.remove();
-  };
+
+  document.body.insertAdjacentHTML("beforeend", modalHtml);
 }
 
 function isValidURL(string) {

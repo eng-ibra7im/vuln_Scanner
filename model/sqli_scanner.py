@@ -204,6 +204,71 @@ class SQLiDetectionOrchestrator:
         self._tool_availability[tool_name] = available
         return available
 
+    def _extract_tool_error(self, output: str) -> Optional[str]:
+        """Extract a concise execution error from noisy tool output."""
+        if not output:
+            return None
+
+        lowered = output.lower()
+        if "traceback (most recent call last)" in lowered:
+            return "Tool crashed with a Python traceback"
+
+        for line in output.splitlines():
+            cleaned = re.sub(r"\x1b\[[0-9;]*[a-zA-Z]", "", line).strip()
+            if not cleaned:
+                continue
+
+            lowered_line = cleaned.lower()
+            if cleaned == "Press Enter to continue...":
+                continue
+            if any(
+                marker in lowered_line
+                for marker in [
+                    "[critical]",
+                    "[error]",
+                    "exception",
+                    "failed",
+                    "unable to",
+                    "not found",
+                    "no such file",
+                    "permission denied",
+                    "timed out",
+                ]
+            ):
+                return cleaned
+
+        return None
+
+    def _build_execution_error(
+        self,
+        returncode: int,
+        stdout: str,
+        stderr: str,
+    ) -> Optional[str]:
+        """Determine whether a tool execution should be treated as failed."""
+        stdout_error = self._extract_tool_error(stdout)
+        stderr_error = self._extract_tool_error(stderr)
+
+        if returncode == 0 and not stdout_error and not stderr_error:
+            return None
+
+        message = stderr_error or stdout_error
+        if stdout_error and stderr_error == "Tool crashed with a Python traceback":
+            message = stdout_error
+
+        if message:
+            if returncode not in {0, None}:
+                return f"{message} (exit code {returncode})"
+            return message
+
+        if returncode == -1:
+            return "Tool execution failed"
+
+        if returncode != 0:
+            return f"Tool exited with code {returncode}"
+
+        return None
+
     def get_available_tools(self) -> List[str]:
         """Get list of available SQLi detection tools"""
         available = []
@@ -321,6 +386,8 @@ class SQLiDetectionOrchestrator:
     ) -> Dict:
         """Generate SQLMap execution plan"""
         tool_path = get_tool_path("sqlmap")
+        output_dir = self.config.get_results_dir("sqli", base_path=Path(__file__).parent)
+        output_dir.mkdir(parents=True, exist_ok=True)
 
         cmd = [
             tool_path,
@@ -332,7 +399,7 @@ class SQLiDetectionOrchestrator:
             "--risk",
             "2" if intensity == "aggressive" else "1",
             "--output-dir",
-            str(Path(__file__).parent / "results" / "sqli"),
+            str(output_dir),
             "--forms" if intensity == "aggressive" else "",
             "--random-agent",
             "--tamper=space2comment" if intensity == "aggressive" else "",
@@ -369,22 +436,26 @@ class SQLiDetectionOrchestrator:
     ) -> Dict:
         """Generate Nuclei execution plan for SQLi detection"""
         tool_path = get_tool_path("nuclei")
+        configured_templates = self.tool_configs.get("nuclei", {}).get("templates") or [
+            "dast/vulnerabilities/sqli/",
+            "http/vulnerabilities/generic/error-based-sql-injection.yaml",
+        ]
+        if isinstance(configured_templates, str):
+            configured_templates = [configured_templates]
 
         cmd = [
             tool_path,
             "-u",
             target_url,
             "-dast",  # Enable DAST templates (disabled by default in Nuclei v3+)
-            "-t",
-            "dast/vulnerabilities/sqli/",
-            "-t",
-            "http/vulnerabilities/generic/error-based-sql-injection.yaml",
             "-jsonl",
             "-silent",
             "-nc",  # No color
             "-timeout",
             str(min(timeout // 3, 60)),
         ]
+        for template in configured_templates:
+            cmd.extend(["-t", str(template)])
 
         if intensity == "aggressive":
             cmd.extend(["-rl", "150"])  # Rate limit
@@ -421,6 +492,8 @@ class SQLiDetectionOrchestrator:
             "3" if intensity == "aggressive" else "1",
             "--threads",
             "5" if intensity == "aggressive" else "2",
+            "--timeout",
+            str(min(timeout // 3, 30)),
         ]
 
         return {
@@ -450,12 +523,32 @@ class SQLiDetectionOrchestrator:
             findings = self._parse_tool_output(
                 tool_name, result["stdout"], result["stderr"]
             )
+            execution_error = self._build_execution_error(
+                result["returncode"],
+                result["stdout"],
+                result["stderr"],
+            )
+
+            if execution_error and not findings:
+                return SQLiToolResult(
+                    tool=tool_name,
+                    success=False,
+                    findings=[],
+                    execution_time=execution_time,
+                    error=execution_error,
+                    raw_output=(
+                        (result["stdout"] + "\n" + result["stderr"])[:5000]
+                        if (result["stdout"] or result["stderr"])
+                        else None
+                    ),
+                )
 
             return SQLiToolResult(
                 tool=tool_name,
                 success=True,
                 findings=findings,
                 execution_time=execution_time,
+                error=execution_error,
                 raw_output=(
                     (result["stdout"] + "\n" + result["stderr"])[:5000]
                     if (result["stdout"] or result["stderr"])
@@ -488,7 +581,7 @@ class SQLiDetectionOrchestrator:
                 error=str(e),
             )
 
-    def _run_subprocess_sync(self, command: List[str], timeout: int) -> Dict[str, str]:
+    def _run_subprocess_sync(self, command: List[str], timeout: int) -> Dict[str, Any]:
         """Run subprocess synchronously with timeout"""
         try:
             process = subprocess.run(
@@ -498,8 +591,15 @@ class SQLiDetectionOrchestrator:
                 timeout=timeout,
                 encoding="utf-8",
                 errors="replace",
+                creationflags=(
+                    subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
+                ),
             )
-            return {"stdout": process.stdout, "stderr": process.stderr}
+            return {
+                "stdout": process.stdout,
+                "stderr": process.stderr,
+                "returncode": process.returncode,
+            }
         except subprocess.TimeoutExpired as e:
             raise e
         except Exception as e:
@@ -1028,14 +1128,9 @@ class SQLiDetectionOrchestrator:
         plan_data = self.generate_execution_plan(target_url, tools, intensity, options)
 
         if not plan_data.get("success"):
-            return {
-                "scan_info": {
-                    "target": target_url,
-                    "error": plan_data.get("error", "Failed to generate plan"),
-                },
-                "summary": {"total_findings": 0},
-                "findings": [],
-            }
+            raise RuntimeError(
+                plan_data.get("error", "Failed to generate SQL injection plan")
+            )
 
         if progress_callback:
             progress_callback(10)
@@ -1072,6 +1167,15 @@ class SQLiDetectionOrchestrator:
 
         if progress_callback:
             progress_callback(85)
+
+        if tool_stats and not any(stats["success"] for stats in tool_stats.values()):
+            error_summary = "; ".join(
+                f"{tool_name}: {stats.get('error') or 'execution failed'}"
+                for tool_name, stats in tool_stats.items()
+            )
+            raise RuntimeError(
+                f"No SQL injection tools completed successfully. {error_summary}"
+            )
 
         # Deduplicate and validate findings
         validated_findings = self._deduplicate_findings(all_findings)

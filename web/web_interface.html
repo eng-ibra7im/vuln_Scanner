@@ -133,7 +133,7 @@
                     </div>
                 </div>
 
-                <div class="card">
+                <div class="card recommendation-card">
                     <div class="card-header card-header-flex">
                         <h3><i class="fa-solid fa-file-lines"></i> Unified
                             Recommendation Summary</h3>
@@ -145,8 +145,15 @@
                             </button>
                         </div>
                     </div>
-                    <div id="recommendation-summary-content">
-                        No completed scans available yet.
+                    <div id="recommendation-summary-content"
+                        class="recommendation-summary recommendation-summary-empty">
+                        <div class="recommendation-message">
+                            <i class="fa-solid fa-circle-info"></i>
+                            <div>
+                                <strong>No completed scans available yet.</strong>
+                                <span>Run scans, then generate a unified risk summary.</span>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -164,33 +171,19 @@
                                     placeholder="e.g. example.com" required>
                             </div>
                             <div class="input-group profile-group">
-                                <label for="subdomainProfile">Scan Profile</label>
+                                <label id="subdomainProfileLabel">Scan Profile</label>
                                 <div class="profile-picker">
-                                    <div class="profile-picker-head">
-                                        <div class="profile-picker-icon" aria-hidden="true">
-                                            <i class="fa-solid fa-globe"></i>
-                                        </div>
-                                        <div class="profile-picker-intro">
-                                            <span class="profile-picker-eyebrow">Scan strategy</span>
-                                            <h4 class="profile-picker-title">Choose coverage level</h4>
-                                            <p class="profile-picker-summary">Preset bundles that trade speed for coverage.</p>
-                                        </div>
-                                        <div class="profile-select-wrap">
-                                            <span class="profile-select-label">Preset</span>
-                                            <select id="subdomainProfile" class="profile-select"
-                                                aria-describedby="subdomainProfileMeta">
-                                                <option value="standard">Standard</option>
-                                            </select>
-                                        </div>
+                                    <div id="subdomainProfile" class="profile-radio-group" role="radiogroup"
+                                        aria-labelledby="subdomainProfileLabel"
+                                        aria-describedby="subdomainProfileMeta">
+                                        <label class="profile-radio-option">
+                                            <input type="radio" name="subdomainProfile" value="standard" checked>
+                                            <span class="profile-radio-title">Standard</span>
+                                        </label>
                                     </div>
-                                    <div id="subdomainProfileMeta" class="profile-meta" aria-live="polite">
-                                        <div class="profile-meta-top">
-                                            <span class="profile-pill profile-pill-standard">Standard</span>
-                                            <span class="profile-meta-mode">Recommended</span>
-                                        </div>
-                                        <p>Balanced coverage for regular assessments.</p>
-                                        <div class="profile-meta-chips"></div>
-                                    </div>
+                                    <!-- <p id="subdomainProfileMeta" class="profile-meta" aria-live="polite">
+                                        Balanced scan.
+                                    </p> -->
                                 </div>
                             </div>
                         </div>
@@ -306,8 +299,8 @@
                             <select id="subdomainPageSize"
                                 title="Results per page"
                                 onchange="changeSubdomainPageSize()">
-                                <option value="25">25</option>
-                                <option value="50" selected>50</option>
+                                <option value="25" selected>25</option>
+                                <option value="50">50</option>
                                 <option value="100">100</option>
                                 <option value="200">200</option>
                             </select>
@@ -329,33 +322,19 @@
                                     placeholder="https://example.com" required>
                             </div>
                             <div class="input-group profile-group">
-                                <label for="pathProfile">Scan Profile</label>
+                                <label id="pathProfileLabel">Scan Profile</label>
                                 <div class="profile-picker">
-                                    <div class="profile-picker-head">
-                                        <div class="profile-picker-icon" aria-hidden="true">
-                                            <i class="fa-solid fa-route"></i>
-                                        </div>
-                                        <div class="profile-picker-intro">
-                                            <span class="profile-picker-eyebrow">Scan strategy</span>
-                                            <h4 class="profile-picker-title">Choose coverage level</h4>
-                                            <p class="profile-picker-summary">Preset bundles that trade speed for coverage.</p>
-                                        </div>
-                                        <div class="profile-select-wrap">
-                                            <span class="profile-select-label">Preset</span>
-                                            <select id="pathProfile" class="profile-select"
-                                                aria-describedby="pathProfileMeta">
-                                                <option value="standard">Standard</option>
-                                            </select>
-                                        </div>
+                                    <div id="pathProfile" class="profile-radio-group" role="radiogroup"
+                                        aria-labelledby="pathProfileLabel"
+                                        aria-describedby="pathProfileMeta">
+                                        <label class="profile-radio-option">
+                                            <input type="radio" name="pathProfile" value="standard" checked>
+                                            <span class="profile-radio-title">Standard</span>
+                                        </label>
                                     </div>
-                                    <div id="pathProfileMeta" class="profile-meta" aria-live="polite">
-                                        <div class="profile-meta-top">
-                                            <span class="profile-pill profile-pill-standard">Standard</span>
-                                            <span class="profile-meta-mode">Recommended</span>
-                                        </div>
-                                        <p>Balanced coverage for regular assessments.</p>
-                                        <div class="profile-meta-chips"></div>
-                                    </div>
+                                    <p id="pathProfileMeta" class="profile-meta" aria-live="polite">
+                                        Balanced scan.
+                                    </p>
                                 </div>
                             </div>
                         </div>
@@ -460,8 +439,8 @@
                             <label for="pathPageSize">Per page:</label>
                             <select id="pathPageSize" title="Results per page"
                                 onchange="changePathPageSize()">
-                                <option value="25">25</option>
-                                <option value="50" selected>50</option>
+                                <option value="25" selected>25</option>
+                                <option value="50">50</option>
                                 <option value="100">100</option>
                                 <option value="200">200</option>
                             </select>
@@ -485,33 +464,19 @@
                                     required>
                             </div>
                             <div class="input-group profile-group">
-                                <label for="xssProfile">Scan Profile</label>
+                                <label id="xssProfileLabel">Scan Profile</label>
                                 <div class="profile-picker">
-                                    <div class="profile-picker-head">
-                                        <div class="profile-picker-icon" aria-hidden="true">
-                                            <i class="fa-solid fa-bug"></i>
-                                        </div>
-                                        <div class="profile-picker-intro">
-                                            <span class="profile-picker-eyebrow">Scan strategy</span>
-                                            <h4 class="profile-picker-title">Choose coverage level</h4>
-                                            <p class="profile-picker-summary">Preset bundles that trade speed for coverage.</p>
-                                        </div>
-                                        <div class="profile-select-wrap">
-                                            <span class="profile-select-label">Preset</span>
-                                            <select id="xssProfile" class="profile-select"
-                                                aria-describedby="xssProfileMeta">
-                                                <option value="standard">Standard</option>
-                                            </select>
-                                        </div>
+                                    <div id="xssProfile" class="profile-radio-group" role="radiogroup"
+                                        aria-labelledby="xssProfileLabel"
+                                        aria-describedby="xssProfileMeta">
+                                        <label class="profile-radio-option">
+                                            <input type="radio" name="xssProfile" value="standard" checked>
+                                            <span class="profile-radio-title">Standard</span>
+                                        </label>
                                     </div>
-                                    <div id="xssProfileMeta" class="profile-meta" aria-live="polite">
-                                        <div class="profile-meta-top">
-                                            <span class="profile-pill profile-pill-standard">Standard</span>
-                                            <span class="profile-meta-mode">Recommended</span>
-                                        </div>
-                                        <p>Balanced coverage for regular assessments.</p>
-                                        <div class="profile-meta-chips"></div>
-                                    </div>
+                                    <p id="xssProfileMeta" class="profile-meta" aria-live="polite">
+                                        Balanced scan.
+                                    </p>
                                 </div>
                             </div>
                         </div>
@@ -586,6 +551,7 @@
                                     <th>Parameter</th>
                                     <th>Confidence</th>
                                     <th>Tool</th>
+                                    <th>Actions</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -615,8 +581,8 @@
                             <label for="xssPageSize">Per page:</label>
                             <select id="xssPageSize" title="Results per page"
                                 onchange="changeXSSPageSize()">
-                                <option value="25">25</option>
-                                <option value="50" selected>50</option>
+                                <option value="25" selected>25</option>
+                                <option value="50">50</option>
                                 <option value="100">100</option>
                                 <option value="200">200</option>
                             </select>
@@ -651,33 +617,19 @@
                                 </div>
                             </div>
                             <div class="input-group profile-group">
-                                <label for="sqliProfile">Scan Profile</label>
+                                <label id="sqliProfileLabel">Scan Profile</label>
                                 <div class="profile-picker">
-                                    <div class="profile-picker-head">
-                                        <div class="profile-picker-icon" aria-hidden="true">
-                                            <i class="fa-solid fa-database"></i>
-                                        </div>
-                                        <div class="profile-picker-intro">
-                                            <span class="profile-picker-eyebrow">Scan strategy</span>
-                                            <h4 class="profile-picker-title">Choose coverage level</h4>
-                                            <p class="profile-picker-summary">Preset bundles that trade speed for coverage.</p>
-                                        </div>
-                                        <div class="profile-select-wrap">
-                                            <span class="profile-select-label">Preset</span>
-                                            <select id="sqliProfile" class="profile-select"
-                                                aria-describedby="sqliProfileMeta">
-                                                <option value="standard">Standard</option>
-                                            </select>
-                                        </div>
+                                    <div id="sqliProfile" class="profile-radio-group" role="radiogroup"
+                                        aria-labelledby="sqliProfileLabel"
+                                        aria-describedby="sqliProfileMeta">
+                                        <label class="profile-radio-option">
+                                            <input type="radio" name="sqliProfile" value="standard" checked>
+                                            <span class="profile-radio-title">Standard</span>
+                                        </label>
                                     </div>
-                                    <div id="sqliProfileMeta" class="profile-meta" aria-live="polite">
-                                        <div class="profile-meta-top">
-                                            <span class="profile-pill profile-pill-standard">Standard</span>
-                                            <span class="profile-meta-mode">Recommended</span>
-                                        </div>
-                                        <p>Balanced coverage for regular assessments.</p>
-                                        <div class="profile-meta-chips"></div>
-                                    </div>
+                                    <p id="sqliProfileMeta" class="profile-meta" aria-live="polite">
+                                        Balanced scan.
+                                    </p>
                                 </div>
                             </div>
                         </div>
@@ -888,27 +840,24 @@
                             </tbody>
                         </table>
                     </div>
-                    <div class="pagination-controls">
-                        <button class="btn btn-sm" id="sqliPrevPage"
-                            onclick="previousSQLiPage()" disabled>
-                            <i class="fa-solid fa-chevron-left"></i>
-                            Previous
-                        </button>
-                        <span class="page-info" id="sqliPageInfo">Page 1 of
-                            1</span>
-                        <button class="btn btn-sm" id="sqliNextPage"
-                            onclick="nextSQLiPage()" disabled>
-                            Next
-                            <i class="fa-solid fa-chevron-right"></i>
-                        </button>
-                    </div>
-                    <div class="pagination-controls">
+                    <div class="pagination-container" id="sqliPagination">
+                        <div class="pagination-info">
+                            <span id="sqliPaginationInfo">Showing 0-0 of 0 results</span>
+                        </div>
+                        <div class="pagination-controls">
+                            <button class="pagination-btn" id="sqliPrevBtn" onclick="previousSQLiPage()" disabled>
+                                <i class="fa-solid fa-chevron-left"></i> Previous
+                            </button>
+                            <div class="pagination-pages" id="sqliPageNumbers"></div>
+                            <button class="pagination-btn" id="sqliNextBtn" onclick="nextSQLiPage()" disabled>
+                                Next <i class="fa-solid fa-chevron-right"></i>
+                            </button>
+                        </div>
                         <div class="pagination-size">
                             <label for="sqliPageSize">Per page:</label>
-                            <select id="sqliPageSize" title="Results per page"
-                                onchange="changeSQLiPageSize()">
-                                <option value="25">25</option>
-                                <option value="50" selected>50</option>
+                            <select id="sqliPageSize" title="Results per page" onchange="changeSQLiPageSize()">
+                                <option value="25" selected>25</option>
+                                <option value="50">50</option>
                                 <option value="100">100</option>
                                 <option value="200">200</option>
                             </select>
@@ -942,33 +891,19 @@
                                 </div>
                             </div>
                             <div class="input-group profile-group">
-                                <label for="lfiProfile">Scan Profile</label>
+                                <label id="lfiProfileLabel">Scan Profile</label>
                                 <div class="profile-picker">
-                                    <div class="profile-picker-head">
-                                        <div class="profile-picker-icon" aria-hidden="true">
-                                            <i class="fa-solid fa-file-code"></i>
-                                        </div>
-                                        <div class="profile-picker-intro">
-                                            <span class="profile-picker-eyebrow">Scan strategy</span>
-                                            <h4 class="profile-picker-title">Choose coverage level</h4>
-                                            <p class="profile-picker-summary">Preset bundles that trade speed for coverage.</p>
-                                        </div>
-                                        <div class="profile-select-wrap">
-                                            <span class="profile-select-label">Preset</span>
-                                            <select id="lfiProfile" class="profile-select"
-                                                aria-describedby="lfiProfileMeta">
-                                                <option value="standard">Standard</option>
-                                            </select>
-                                        </div>
+                                    <div id="lfiProfile" class="profile-radio-group" role="radiogroup"
+                                        aria-labelledby="lfiProfileLabel"
+                                        aria-describedby="lfiProfileMeta">
+                                        <label class="profile-radio-option">
+                                            <input type="radio" name="lfiProfile" value="standard" checked>
+                                            <span class="profile-radio-title">Standard</span>
+                                        </label>
                                     </div>
-                                    <div id="lfiProfileMeta" class="profile-meta" aria-live="polite">
-                                        <div class="profile-meta-top">
-                                            <span class="profile-pill profile-pill-standard">Standard</span>
-                                            <span class="profile-meta-mode">Recommended</span>
-                                        </div>
-                                        <p>Balanced coverage for regular assessments.</p>
-                                        <div class="profile-meta-chips"></div>
-                                    </div>
+                                    <p id="lfiProfileMeta" class="profile-meta" aria-live="polite">
+                                        Balanced scan.
+                                    </p>
                                 </div>
                             </div>
                         </div>
@@ -1159,30 +1094,32 @@
                             </tbody>
                         </table>
                     </div>
-                    <div class="pagination-controls">
-                        <button class="btn btn-sm" id="lfiPrevPage"
-                            onclick="previousLFIPage()" disabled>
-                            <i class="fa-solid fa-chevron-left"></i>
-                            Previous
-                        </button>
-                        <span class="page-info" id="lfiPageInfo">Page 1 of
-                            1</span>
-                        <button class="btn btn-sm" id="lfiNextPage"
-                            onclick="nextLFIPage()" disabled>
-                            Next
-                            <i class="fa-solid fa-chevron-right"></i>
-                        </button>
-                    </div>
-                    <div class="pagination-controls">
-                        <div class="pagination-size">
-                            <label for="lfiPageSize">Per page:</label>
-                            <select id="lfiPageSize" title="Results per page"
-                                onchange="changeLFIPageSize()">
-                                <option value="25">25</option>
-                                <option value="50" selected>50</option>
-                                <option value="100">100</option>
-                                <option value="200">200</option>
-                            </select>
+                    <div class="pagination-container">
+                        <div class="pagination-controls">
+                            <button class="btn btn-sm" id="lfiPrevPage"
+                                onclick="previousLFIPage()" disabled>
+                                <i class="fa-solid fa-chevron-left"></i>
+                                Previous
+                            </button>
+                            <span class="page-info" id="lfiPageInfo">Page 1 of
+                                1</span>
+                            <button class="btn btn-sm" id="lfiNextPage"
+                                onclick="nextLFIPage()" disabled>
+                                Next
+                                <i class="fa-solid fa-chevron-right"></i>
+                            </button>
+                        </div>
+                        <div class="pagination-controls">
+                            <div class="pagination-size">
+                                <label for="lfiPageSize">Per page:</label>
+                                <select id="lfiPageSize" title="Results per page"
+                                    onchange="changeLFIPageSize()">
+                                    <option value="25" selected>25</option>
+                                    <option value="50">50</option>
+                                    <option value="100">100</option>
+                                    <option value="200">200</option>
+                                </select>
+                            </div>
                         </div>
                     </div>
                 </div>

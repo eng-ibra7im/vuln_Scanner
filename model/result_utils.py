@@ -604,45 +604,111 @@ def _normalize_xss_result(
 ) -> None:
     _ensure_common_sections(result)
     scan_info = result.get("scan_info", {})
+    target = scan_info.get("target") or result.get("target_url") or result.get("target")
     result["scan_info"] = {
         "module": "xss",
-        "target": scan_info.get("target"),
-        "domain": scan_info.get("domain"),
+        "target": target,
+        "domain": scan_info.get("domain") or urlparse(target or "").netloc,
         "target_type": "url",
         "profile": profile_name,
         "scan_time": scan_info.get("scan_time", datetime.now(UTC).isoformat()),
-        "execution_time": scan_info.get("total_execution_time", 0),
+        "execution_time": scan_info.get(
+            "total_execution_time",
+            scan_info.get("execution_time", result.get("execution_time", 0)),
+        ),
         "tools_used": scan_info.get("tools_used", []),
-        "status": "completed" if not result.get("error") else "failed",
+        "status": scan_info.get(
+            "status",
+            "completed" if not result.get("error") else "failed",
+        ),
         **(job_context or {}),
     }
 
     findings = []
     for finding in result.get("findings", []):
-        severity = _normalize_severity(finding.get("severity"), fallback="medium")
+        details = finding.get("details", {})
+        source = details if isinstance(details, dict) and details else finding
+
+        finding_url = (
+            finding.get("url")
+            or source.get("url")
+            or finding.get("locator")
+            or finding.get("asset")
+            or ""
+        )
+        parameter = finding.get("parameter") or source.get("parameter")
+        vulnerability_type = (
+            finding.get("xss_type")
+            or source.get("xss_type")
+            or finding.get("vulnerability_type")
+            or source.get("vulnerability_type")
+            or finding.get("kind")
+            or "xss"
+        )
+        confidence = (
+            finding.get("confidence")
+            or source.get("confidence")
+            or finding.get("status")
+            or "medium"
+        )
+        tool = (
+            finding.get("tool")
+            or source.get("tool")
+            or finding.get("detection_tool")
+            or source.get("detection_tool")
+        )
+        severity = _normalize_severity(
+            finding.get("severity") or source.get("severity"),
+            fallback="medium",
+        )
+        normalized_details = dict(source)
+        normalized_details.setdefault("url", finding_url)
+        normalized_details.setdefault("parameter", parameter)
+        normalized_details.setdefault("xss_type", vulnerability_type)
+        normalized_details.setdefault("vulnerability_type", vulnerability_type)
+        normalized_details.setdefault("confidence", confidence)
+        normalized_details.setdefault("tool", tool)
+        normalized_details.setdefault(
+            "detection_tool",
+            source.get("detection_tool") or tool,
+        )
+
         findings.append(
             {
                 "id": _build_finding_id(
                     "xss",
-                    finding.get("vulnerability_type", "xss"),
-                    f"{finding.get('url', '')}::{finding.get('parameter', '')}",
+                    vulnerability_type,
+                    f"{finding_url}::{parameter or ''}",
                 ),
                 "module": "xss",
-                "kind": finding.get("vulnerability_type", "xss"),
-                "title": f"XSS in parameter {finding.get('parameter', 'unknown')}",
+                "kind": vulnerability_type,
+                "title": f"XSS in parameter {parameter or 'unknown'}",
                 "severity": severity,
-                "status": finding.get("confidence", "medium"),
-                "locator": finding.get("url", ""),
-                "asset": finding.get("url", ""),
-                "parameter": finding.get("parameter"),
-                "tool": finding.get("tool") or finding.get("detection_tool"),
-                "evidence": finding.get("evidence", ""),
-                "details": finding,
+                "status": confidence,
+                "locator": finding_url,
+                "asset": finding_url,
+                "url": finding_url,
+                "parameter": parameter,
+                "xss_type": vulnerability_type,
+                "vulnerability_type": vulnerability_type,
+                "confidence": confidence,
+                "tool": tool,
+                "detection_tool": source.get("detection_tool") or tool,
+                "payload": finding.get("payload") or source.get("payload"),
+                "evidence": finding.get("evidence") or source.get("evidence", ""),
+                "remediation": finding.get("remediation") or source.get("remediation"),
+                "cwe_id": finding.get("cwe_id") or source.get("cwe_id"),
+                "cvss_score": finding.get("cvss_score") or source.get("cvss_score"),
+                "details": normalized_details,
             }
         )
 
     tool_entries = result.get("tool_results", {})
     tool_results = _tool_results_from_mapping(tool_entries)
+    if not result["scan_info"]["tools_used"]:
+        result["scan_info"]["tools_used"] = [
+            tool.get("tool") for tool in tool_results if tool.get("tool")
+        ]
     result["summary"] = {
         "total_findings": len(findings),
         "severity": _severity_counts(findings),

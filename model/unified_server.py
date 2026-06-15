@@ -89,6 +89,13 @@ def serve_css():
     return send_file(css_path, mimetype="text/css")
 
 
+@app.route("/styles.min.css")
+def serve_minified_css():
+    """Serve the bundled minified CSS file."""
+    css_path = Path(__file__).parent.parent / "web" / "styles.min.css"
+    return send_file(css_path, mimetype="text/css")
+
+
 @app.route("/main.js")
 def serve_js():
     """Serve the JavaScript file"""

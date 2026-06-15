@@ -86,6 +86,8 @@ $optionalTools = @(
     "dotdotpwn"
 )
 
+$env:PATH = "$scriptPath\.venv\Scripts;" + $env:PATH
+
 $missingTools = @()
 foreach ($tool in $optionalTools) {
     if (-not (Get-Command $tool -ErrorAction SilentlyContinue)) {

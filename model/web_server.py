@@ -608,6 +608,13 @@ def serve_css():
     return send_file(css_path, mimetype="text/css")
 
 
+@app.route("/styles.min.css")
+def serve_minified_css():
+    """Serve the bundled minified CSS file."""
+    css_path = Path(__file__).parent.parent / "web" / "styles.min.css"
+    return send_file(css_path, mimetype="text/css")
+
+
 @app.route("/profile-overrides.css")
 def serve_profile_overrides_css():
     """Serve profile-specific UI overrides."""
@@ -707,27 +714,55 @@ def start_scan():
                 400,
             )
 
-        domain = data["domain"]
+        domain = str(data["domain"]).strip().lower()
         if not is_valid_domain_target(domain):
             return jsonify({"success": False, "error": "Invalid domain format"}), 400
+
+        config = get_runtime_config()
         profile = resolve_scan_profile(
             "subdomains",
             data.get("profile"),
-            configured_profiles=get_runtime_config().get_scan_profiles(),
+            configured_profiles=config.get_scan_profiles(),
         )
 
-        # Load config
-        config = get_runtime_config()
+        requested_tools = data.get("tools")
+        if requested_tools:
+            selected_tools = [
+                str(tool).strip().lower()
+                for tool in requested_tools
+                if str(tool).strip().lower() in config.tools
+            ]
+            if not selected_tools:
+                return (
+                    jsonify(
+                        {
+                            "success": False,
+                            "error": "No valid subdomain tools selected",
+                        }
+                    ),
+                    400,
+                )
+        else:
+            selected_tools = [
+                str(tool).strip().lower()
+                for tool in (profile.get("tools") or [])
+                if str(tool).strip().lower() in config.tools
+            ]
 
-        selected_tools = data.get("tools") or profile.get("tools")
         if selected_tools:
             # Disable all tools first
             for tool in config.tools:
                 config.tools[tool]["enabled"] = False
             # Enable requested tools
             for tool in selected_tools:
-                if tool in config.tools:
-                    config.tools[tool]["enabled"] = True
+                config.tools[tool]["enabled"] = True
+
+        enabled_tools = config.get_enabled_tools()
+        if not enabled_tools:
+            return (
+                jsonify({"success": False, "error": "No subdomain tools are enabled"}),
+                400,
+            )
 
         config.parallel_execution = data.get(
             "parallel",
@@ -747,7 +782,7 @@ def start_scan():
             config,
             metadata={
                 "profile": profile.get("profile_name", "standard"),
-                "tools": selected_tools or config.get_enabled_tools(),
+                "tools": enabled_tools,
             },
             on_complete=handle_subdomain_completion,
         )
@@ -1380,15 +1415,67 @@ def start_xss_scan():
                 400,
             )
 
-        target_url = data["url"]
+        target_url = str(data["url"]).strip()
         if not is_valid_url_target(target_url):
             return jsonify({"success": False, "error": "Invalid URL format"}), 400
+        if not urlparse(target_url).query:
+            return (
+                jsonify(
+                    {
+                        "success": False,
+                        "error": "XSS scanning requires a URL with at least one query parameter",
+                    }
+                ),
+                400,
+            )
+
+        config = get_runtime_config()
         profile = resolve_scan_profile(
             "xss",
             data.get("profile"),
-            configured_profiles=get_runtime_config().get_scan_profiles(),
+            configured_profiles=config.get_scan_profiles(),
         )
-        selected_tools = data.get("tools") or profile.get("tools")
+        available_tools = config.get_xss_tools()
+        requested_tools = data.get("tools")
+
+        if requested_tools is not None and not isinstance(
+            requested_tools, (list, tuple, set)
+        ):
+            return (
+                jsonify(
+                    {
+                        "success": False,
+                        "error": "Tools must be provided as a list of tool names",
+                    }
+                ),
+                400,
+            )
+
+        if requested_tools:
+            selected_tools = [
+                str(tool).strip().lower()
+                for tool in requested_tools
+                if str(tool).strip().lower() in available_tools
+            ]
+            if not selected_tools:
+                return (
+                    jsonify(
+                        {
+                            "success": False,
+                            "error": "No valid XSS tools selected",
+                        }
+                    ),
+                    400,
+                )
+        else:
+            selected_tools = [
+                str(tool).strip().lower()
+                for tool in (profile.get("tools") or [])
+                if str(tool).strip().lower() in available_tools
+            ]
+
+        if selected_tools:
+            selected_tools = list(dict.fromkeys(selected_tools))
 
         job_id = queue_xss_scan(
             target_url,
@@ -1564,30 +1651,106 @@ def start_sqli_scan():
     if not data:
         return jsonify({"success": False, "error": "No data provided"}), 400
 
-    target_url = data.get("url")
+    target_url = str(data.get("url", "")).strip()
     if not target_url:
         return jsonify({"success": False, "error": "No URL provided"}), 400
     if not is_valid_url_target(target_url):
         return jsonify({"success": False, "error": "Invalid URL format"}), 400
+    if not urlparse(target_url).query:
+        return (
+            jsonify(
+                {
+                    "success": False,
+                    "error": "SQL injection scanning requires a URL with at least one query parameter",
+                }
+            ),
+            400,
+        )
 
     config = get_runtime_config()
 
     profile = resolve_scan_profile(
         "sqli",
         data.get("profile"),
-        configured_profiles=get_runtime_config().get_scan_profiles(),
+        configured_profiles=config.get_scan_profiles(),
     )
-    # Get selected tools
-    tools = data.get("tools") or profile.get("tools")
-    if tools is None:
+    requested_tools = data.get("tools")
+    if requested_tools is not None and not isinstance(
+        requested_tools, (list, tuple, set)
+    ):
+        return (
+            jsonify(
+                {
+                    "success": False,
+                    "error": "Tools must be provided as a list of tool names",
+                }
+            ),
+            400,
+        )
+
+    available_tools = config.get_sqli_tools()
+    if requested_tools:
+        tools = [
+            str(tool).strip().lower()
+            for tool in requested_tools
+            if str(tool).strip().lower() in available_tools
+        ]
+        if not tools:
+            return (
+                jsonify(
+                    {
+                        "success": False,
+                        "error": "No valid SQL injection tools selected",
+                    }
+                ),
+                400,
+            )
+    else:
+        tools = [
+            str(tool).strip().lower()
+            for tool in (profile.get("tools") or [])
+            if str(tool).strip().lower() in available_tools
+        ]
+
+    if not tools:
         tools = [
             tool_name
             for tool_name, tool_config in config.get_sqli_tools().items()
             if tool_config.get("enabled", True)
         ]
-    intensity = data.get("intensity", profile.get("intensity", "basic"))
+    if not tools:
+        return jsonify({"success": False, "error": "No SQL injection tools are enabled"}), 400
+
+    tools = list(dict.fromkeys(tools))
+
+    intensity = str(data.get("intensity", profile.get("intensity", "basic"))).lower()
+    if intensity not in {"basic", "aggressive"}:
+        return (
+            jsonify(
+                {
+                    "success": False,
+                    "error": "Invalid SQL injection scan intensity",
+                }
+            ),
+            400,
+        )
+
+    options_payload = data.get("options", {})
+    if options_payload is None:
+        options_payload = {}
+    if not isinstance(options_payload, dict):
+        return (
+            jsonify(
+                {
+                    "success": False,
+                    "error": "Scan options must be provided as an object",
+                }
+            ),
+            400,
+        )
+
     options = profile.get("options", {}).copy()
-    options.update(data.get("options", {}))
+    options.update(options_payload)
 
     job_id = queue_sqli_scan(
         target_url,

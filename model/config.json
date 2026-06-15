@@ -79,7 +79,7 @@
       "description": "Fast LFI fuzzing with custom payloads"
     },
     "dotdotpwn": {
-      "enabled": true,
+      "enabled": false,
       "description": "Automated directory traversal detection"
     },
     "custom": {

@@ -172,6 +172,9 @@ class WebServerApiTests(unittest.TestCase):
         index_response = self.client.get("/")
         self.assertEqual(index_response.status_code, 200)
 
+        minified_css_response = self.client.get("/styles.min.css")
+        self.assertEqual(minified_css_response.status_code, 200)
+
         css_response = self.client.get("/profile-overrides.css")
         self.assertEqual(css_response.status_code, 200)
 
@@ -243,6 +246,163 @@ class WebServerApiTests(unittest.TestCase):
         xss_response = self.client.post("/api/xss/scan", json={"url": "not-a-url"})
         self.assertEqual(xss_response.status_code, 400)
 
+    def test_xss_scan_requires_parameterized_url(self):
+        response = self.client.post(
+            "/api/xss/scan",
+            json={"url": "https://example.com/profile"},
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("query parameter", response.get_json()["error"])
+
+    def test_xss_scan_filters_invalid_tool_names(self):
+        captured = {}
+        original_queue_xss_scan = web_server.queue_xss_scan
+
+        def fake_queue_xss_scan(target_url, selected_tools=None, *, metadata=None, on_complete=None):
+            captured["target_url"] = target_url
+            captured["tools"] = selected_tools
+            captured["metadata"] = metadata
+            return "job-xss-1"
+
+        web_server.queue_xss_scan = fake_queue_xss_scan
+        try:
+            response = self.client.post(
+                "/api/xss/scan",
+                json={
+                    "url": "  https://example.com/search?q=test  ",
+                    "tools": ["dalfox", "not-a-real-tool"],
+                },
+            )
+        finally:
+            web_server.queue_xss_scan = original_queue_xss_scan
+
+        self.assertEqual(response.status_code, 202)
+        self.assertEqual(captured["target_url"], "https://example.com/search?q=test")
+        self.assertEqual(captured["tools"], ["dalfox"])
+        self.assertEqual(captured["metadata"]["tools"], ["dalfox"])
+
+    def test_xss_scan_rejects_invalid_tool_only_requests(self):
+        response = self.client.post(
+            "/api/xss/scan",
+            json={
+                "url": "https://example.com/search?q=test",
+                "tools": ["not-a-real-tool"],
+            },
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("No valid XSS tools selected", response.get_json()["error"])
+
+    def test_sqli_scan_requires_parameterized_url(self):
+        response = self.client.post(
+            "/api/sqli/scan",
+            json={"url": "https://example.com/login"},
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("query parameter", response.get_json()["error"])
+
+    def test_sqli_scan_filters_invalid_tool_names(self):
+        captured = {}
+        original_queue_sqli_scan = web_server.queue_sqli_scan
+
+        def fake_queue_sqli_scan(
+            target_url,
+            *,
+            tools=None,
+            intensity="basic",
+            options=None,
+            metadata=None,
+            on_complete=None,
+        ):
+            captured["target_url"] = target_url
+            captured["tools"] = tools
+            captured["intensity"] = intensity
+            captured["options"] = options
+            captured["metadata"] = metadata
+            return "job-sqli-1"
+
+        web_server.queue_sqli_scan = fake_queue_sqli_scan
+        try:
+            response = self.client.post(
+                "/api/sqli/scan",
+                json={
+                    "url": "  https://example.com/login?id=1  ",
+                    "tools": ["sqlmap", "not-a-real-tool"],
+                    "intensity": "aggressive",
+                },
+            )
+        finally:
+            web_server.queue_sqli_scan = original_queue_sqli_scan
+
+        self.assertEqual(response.status_code, 202)
+        self.assertEqual(captured["target_url"], "https://example.com/login?id=1")
+        self.assertEqual(captured["tools"], ["sqlmap"])
+        self.assertEqual(captured["intensity"], "aggressive")
+        self.assertEqual(captured["metadata"]["tools"], ["sqlmap"])
+
+    def test_sqli_scan_rejects_invalid_tool_only_requests(self):
+        response = self.client.post(
+            "/api/sqli/scan",
+            json={
+                "url": "https://example.com/login?id=1",
+                "tools": ["not-a-real-tool"],
+            },
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn(
+            "No valid SQL injection tools selected",
+            response.get_json()["error"],
+        )
+
+    def test_sqli_scan_rejects_invalid_intensity(self):
+        response = self.client.post(
+            "/api/sqli/scan",
+            json={
+                "url": "https://example.com/login?id=1",
+                "tools": ["sqlmap"],
+                "intensity": "extreme",
+            },
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("Invalid SQL injection scan intensity", response.get_json()["error"])
+
+    def test_subdomain_scan_filters_invalid_tool_names(self):
+        captured = {}
+        original_queue_subdomain_scan = web_server.queue_subdomain_scan
+
+        def fake_queue_subdomain_scan(domain, config, *, metadata=None, on_complete=None):
+            captured["domain"] = domain
+            captured["tools"] = config.get_enabled_tools()
+            captured["metadata"] = metadata
+            return "job-subdomains-1"
+
+        web_server.queue_subdomain_scan = fake_queue_subdomain_scan
+        try:
+            response = self.client.post(
+                "/api/scan",
+                json={"domain": "Example.COM", "tools": ["subfinder", "pt-ffuf"]},
+            )
+        finally:
+            web_server.queue_subdomain_scan = original_queue_subdomain_scan
+
+        self.assertEqual(response.status_code, 202)
+        self.assertEqual(captured["domain"], "example.com")
+        self.assertEqual(captured["tools"], ["subfinder"])
+        self.assertEqual(captured["metadata"]["tools"], ["subfinder"])
+
+    def test_subdomain_scan_rejects_invalid_tool_only_requests(self):
+        response = self.client.post(
+            "/api/scan",
+            json={"domain": "example.com", "tools": ["pt-ffuf"]},
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("No valid subdomain tools selected", response.get_json()["error"])
+
     def test_subdomain_results_events_and_export(self):
         job_id = self._create_completed_job(
             "subdomains",
@@ -290,6 +450,26 @@ class WebServerApiTests(unittest.TestCase):
         self.assertTrue(payload["success"])
         self.assertIn("summary", payload)
         self.assertIn("recommendations", payload["summary"])
+
+    def test_xss_results_preserve_dashboard_fields(self):
+        job_id = self._create_completed_job(
+            "xss",
+            "https://example.com/search?q=test",
+            sample_xss_result(),
+        )
+
+        results_response = self.client.get(f"/api/xss/scan/{job_id}/results")
+        self.assertEqual(results_response.status_code, 200)
+        results = results_response.get_json()["results"]
+        finding = results["findings"][0]
+
+        self.assertEqual(results["scan_info"]["target"], "https://example.com/search?q=test")
+        self.assertEqual(results["scan_info"]["execution_time"], 2.5)
+        self.assertEqual(finding["url"], "https://example.com/search?q=test")
+        self.assertEqual(finding["xss_type"], "reflected")
+        self.assertEqual(finding["vulnerability_type"], "reflected")
+        self.assertEqual(finding["confidence"], "confirmed")
+        self.assertEqual(finding["tool"], "dalfox")
 
 
 if __name__ == "__main__":

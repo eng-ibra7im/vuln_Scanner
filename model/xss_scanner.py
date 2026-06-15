@@ -140,6 +140,78 @@ class XSSDetectionOrchestrator:
         """Configure logging for the orchestrator"""
         return configure_logger("XSSDetectionOrchestrator", level=logging.DEBUG)
 
+    def _tool_path_is_available(self, tool_path: str) -> bool:
+        """Return whether a resolved tool path can actually be executed."""
+        if not tool_path:
+            return False
+        if "\\" in tool_path or "/" in tool_path:
+            return Path(tool_path).exists()
+        return shutil.which(tool_path) is not None
+
+    def _extract_tool_error(self, output: str) -> Optional[str]:
+        """Extract a concise execution error from noisy tool output."""
+        if not output:
+            return None
+
+        lowered = output.lower()
+        if "traceback (most recent call last)" in lowered:
+            return "Tool crashed with a Python traceback"
+
+        for line in output.splitlines():
+            cleaned = re.sub(r"\x1b\[[0-9;]*[a-zA-Z]", "", line).strip()
+            if not cleaned:
+                continue
+
+            lowered_line = cleaned.lower()
+            if "unable to connect" in lowered_line:
+                return "Unable to connect to the target"
+            if "timed out" in lowered_line:
+                return cleaned
+            if any(
+                marker in lowered_line
+                for marker in [
+                    "error",
+                    "exception",
+                    "failed",
+                    "unable to",
+                    "not found",
+                    "no such file",
+                    "permission denied",
+                ]
+            ):
+                return cleaned
+
+        return None
+
+    def _build_execution_error(
+        self,
+        returncode: int,
+        raw_output: str,
+        stderr_output: str,
+    ) -> Optional[str]:
+        """Determine whether a tool execution should be treated as failed."""
+        output_error = self._extract_tool_error(raw_output)
+        stderr_error = self._extract_tool_error(stderr_output)
+
+        if returncode == 0 and not output_error and not stderr_error:
+            return None
+
+        message = stderr_error or output_error
+        if output_error and stderr_error == "Tool crashed with a Python traceback":
+            message = output_error
+        if message:
+            if returncode not in {0, None}:
+                return f"{message} (exit code {returncode})"
+            return message
+
+        if returncode == -1:
+            return "Tool execution failed"
+
+        if returncode != 0:
+            return f"Tool exited with code {returncode}"
+
+        return None
+
     def generate_execution_plan(
         self, target_url: str, params: List[str] = None
     ) -> Dict[str, Any]:
@@ -171,40 +243,50 @@ class XSSDetectionOrchestrator:
         # dalfox - Parameter Analysis and XSS Scanning
         if xss_tools.get("dalfox", {}).get("enabled", True):
             dalfox_path = get_tool_path("dalfox")
-            plans.append(
-                XSSExecutionPlan(
-                    tool="dalfox",
-                    command=[
-                        dalfox_path,
-                        "url",
-                        target_url,
-                        "--silence",
-                        "--no-color",
-                        "--format",
-                        "json",
-                        "--worker",
-                        "10",
-                        "--delay",
-                        "50",
-                    ],
-                    timeout=120,
-                    priority=1,
-                    description="Advanced parameter analysis and XSS detection",
-                    scan_type="reflected",
+            if self._tool_path_is_available(dalfox_path):
+                dalfox_command = [
+                    dalfox_path,
+                    "url",
+                    target_url,
+                    "--silence",
+                    "--no-color",
+                    "--format",
+                    "json",
+                    "--worker",
+                    "6",
+                    "--delay",
+                    "25",
+                    "--timeout",
+                    "10",
+                    "--skip-bav",
+                    "--skip-headless",
+                ]
+                if params:
+                    dalfox_command.append("--skip-discovery")
+                    dalfox_command.append("--skip-mining-all")
+                    for param in params:
+                        dalfox_command.extend(["-p", param])
+                plans.append(
+                    XSSExecutionPlan(
+                        tool="dalfox",
+                        command=dalfox_command,
+                        timeout=90,
+                        priority=1,
+                        description="Advanced parameter analysis and XSS detection",
+                        scan_type="reflected",
+                    )
                 )
-            )
 
             # Note: Removed separate DOM scan as --dom flag not supported in this dalfox version
 
         # nuclei - XSS templates
         if xss_tools.get("nuclei", {}).get("enabled", True):
             nuclei_path = get_tool_path("nuclei")
-            # Check if nuclei is actually available
-            if nuclei_path and (
-                Path(nuclei_path).exists()
-                if "\\" in nuclei_path or "/" in nuclei_path
-                else shutil.which(nuclei_path)
-            ):
+            nuclei_templates = str(
+                xss_tools.get("nuclei", {}).get("templates")
+                or "dast/vulnerabilities/xss/"
+            )
+            if self._tool_path_is_available(nuclei_path):
                 plans.append(
                     XSSExecutionPlan(
                         tool="nuclei",
@@ -214,7 +296,7 @@ class XSSDetectionOrchestrator:
                             target_url,
                             "-dast",  # Enable DAST templates (disabled by default in Nuclei v3+)
                             "-t",
-                            "dast/vulnerabilities/xss/",
+                            nuclei_templates,
                             "-tags",
                             "xss",
                             "-jsonl",  # JSON Lines output (v3+ uses -jsonl not -json)
@@ -235,12 +317,7 @@ class XSSDetectionOrchestrator:
         # xsstrike - Advanced XSS Detection
         if xss_tools.get("xsstrike", {}).get("enabled", True):
             xsstrike_path = get_tool_path("xsstrike")
-            # Check if xsstrike is actually available
-            if xsstrike_path and (
-                Path(xsstrike_path).exists()
-                if "\\" in xsstrike_path or "/" in xsstrike_path
-                else shutil.which(xsstrike_path)
-            ):
+            if self._tool_path_is_available(xsstrike_path):
                 plans.append(
                     XSSExecutionPlan(
                         tool="xsstrike",
@@ -248,17 +325,16 @@ class XSSDetectionOrchestrator:
                             xsstrike_path,
                             "-u",
                             target_url,
-                            "--crawl",  # Crawl to discover forms and parameters
                             "--skip",  # Skip confirmation prompts
                             "--skip-dom",  # Skip DOM checking for faster scan
                             "--timeout",
-                            "20",
+                            "15",
                             "-t",
-                            "5",  # Number of threads
+                            "3",  # Number of threads
                         ],
-                        timeout=180,
+                        timeout=90,
                         priority=2,
-                        description="Crawl-based XSS detection with context analysis",
+                        description="Context-aware XSS detection against the supplied target URL",
                         scan_type="reflected",
                     )
                 )
@@ -370,6 +446,7 @@ class XSSDetectionOrchestrator:
 
                 raw_output = stdout.decode("utf-8", errors="ignore")
                 stderr_output = stderr.decode("utf-8", errors="ignore")
+                returncode = process.returncode
 
             # Debug logging
             self.logger.debug(f"[{plan.tool}] stdout length: {len(raw_output)}")
@@ -385,6 +462,23 @@ class XSSDetectionOrchestrator:
             )
 
             execution_time = time.time() - start_time
+            execution_error = self._build_execution_error(
+                returncode,
+                raw_output,
+                stderr_output,
+            )
+
+            if execution_error and not findings:
+                self.logger.warning(f"[{plan.tool}] {execution_error}")
+                return XSSToolResult(
+                    tool=plan.tool,
+                    success=False,
+                    findings=[],
+                    execution_time=execution_time,
+                    error=execution_error,
+                    raw_output=raw_output if self.config.save_raw_output else None,
+                )
+
             self.logger.info(
                 f"[{plan.tool}] Completed in {execution_time:.2f}s - Found {len(findings)} potential XSS"
             )
@@ -512,7 +606,7 @@ class XSSDetectionOrchestrator:
         return {
             "url": data.get("data", data.get("url", target_url)),
             "parameter": data.get("param", "unknown"),
-            "payload": "[Detection payload redacted]",  # Don't expose actual payloads
+            "payload": data.get("poc", data.get("payload", "N/A")),
             "xss_type": vuln_type,
             "vulnerability_type": vuln_type,
             "severity": severity.capitalize() if severity else "Medium",
@@ -544,7 +638,7 @@ class XSSDetectionOrchestrator:
         return {
             "url": target_url,
             "parameter": param,
-            "payload": "[Detection payload redacted]",
+            "payload": line.strip() if "poc" in line.lower() or "payload" in line.lower() else "N/A",
             "xss_type": scan_type,
             "vulnerability_type": scan_type,
             "severity": (
@@ -692,7 +786,7 @@ class XSSDetectionOrchestrator:
                 finding = {
                     "url": target_url,
                     "parameter": param,
-                    "payload": "[Detection payload]",
+                    "payload": "N/A",
                     "xss_type": "reflected",
                     "vulnerability_type": "reflected",
                     "severity": (
@@ -808,10 +902,7 @@ class XSSDetectionOrchestrator:
             plans = [p for p in plans if p.tool in tools]
 
         if not plans:
-            return {
-                "error": "No XSS detection tools configured or available",
-                "target": target_url,
-            }
+            raise RuntimeError("No XSS detection tools configured or available")
 
         if progress_callback:
             progress_callback(10)  # Execution plan ready
@@ -826,6 +917,7 @@ class XSSDetectionOrchestrator:
         all_findings = []
         tool_stats = {}
         total_time = 0
+        failed_tools = {}
 
         for result in results:
             tool_stats[result.tool] = {
@@ -838,6 +930,8 @@ class XSSDetectionOrchestrator:
 
             if result.success:
                 all_findings.extend(result.findings)
+            elif result.error:
+                failed_tools[result.tool] = result.error
 
         # Deduplicate and validate
         unique_findings = self._deduplicate_findings(all_findings)
@@ -853,6 +947,19 @@ class XSSDetectionOrchestrator:
         self.logger.info(
             f"Found {len(validated_findings)} unique validated XSS findings"
         )
+
+        warning_message = None
+        if failed_tools:
+            error_summary = "; ".join(
+                f"{tool_name}: {error_text}"
+                for tool_name, error_text in failed_tools.items()
+            )
+            if len(failed_tools) == len(results):
+                warning_message = (
+                    f"All selected XSS tools failed or timed out. {error_summary}"
+                )
+            else:
+                warning_message = f"Some XSS tools failed or timed out. {error_summary}"
 
         # Generate statistics
         severity_stats = {}
@@ -872,6 +979,9 @@ class XSSDetectionOrchestrator:
                 "scan_time": datetime.now(UTC).isoformat(),
                 "total_execution_time": total_time,
                 "tools_used": list(tool_stats.keys()),
+                "status": "completed_with_errors" if failed_tools else "completed",
+                "failed_tools": failed_tools,
+                "warning": warning_message,
             },
             "summary": {
                 "total_findings": len(validated_findings),
@@ -880,10 +990,13 @@ class XSSDetectionOrchestrator:
                 "medium": severity_stats.get("medium", 0),
                 "low": severity_stats.get("low", 0),
                 "by_type": type_stats,
+                "tools_failed": len(failed_tools),
             },
             "tool_results": tool_stats,
             "findings": validated_findings,
         }
+        if warning_message:
+            result["warnings"] = [warning_message]
 
         # Save results
         self._save_results(result, plan_data["domain"])

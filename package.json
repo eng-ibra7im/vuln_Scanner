@@ -2,6 +2,7 @@
   "name": "vuln-scanner-tests",
   "private": true,
   "scripts": {
+    "build:css": "node scripts/build-css.mjs",
     "test:frontend": "node --test tests/frontend.e2e.test.js"
   },
   "devDependencies": {

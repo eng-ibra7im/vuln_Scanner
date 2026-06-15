@@ -1462,43 +1462,43 @@ async def main():
 
         if results["success"]:
             summary = results["summary"]
-            print(f"\n📁 Total Paths Found: {summary['paths']['total']}")
-            print(f"🔍 Interesting: {summary['paths']['interesting_count']}")
-            print(f"⚙️  Parameters Found: {summary['parameters']['total']}")
+            print(f"\n Total Paths Found: {summary['paths']['total']}")
+            print(f"[Search] Interesting: {summary['paths']['interesting_count']}")
+            print(f"  Parameters Found: {summary['parameters']['total']}")
 
-            print("\n📊 Paths by Risk Level:")
+            print("\n Paths by Risk Level:")
             for risk, count in sorted(summary["paths"]["by_risk"].items()):
                 emoji = {
-                    "critical": "🔴",
-                    "high": "🟠",
-                    "medium": "🟡",
-                    "low": "🟢",
-                    "info": "⚪",
-                }.get(risk, "⚪")
+                    "critical": "",
+                    "high": "",
+                    "medium": "",
+                    "low": "",
+                    "info": "",
+                }.get(risk, "")
                 print(f"   {emoji} {risk.upper()}: {count}")
 
-            print("\n📂 Paths by Category:")
+            print("\n[Directory] Paths by Category:")
             for cat, count in summary["paths"]["by_category"].items():
-                print(f"   • {cat}: {count}")
+                print(f"    {cat}: {count}")
 
             findings = results["interesting_findings"]
             if findings["critical_paths"]:
-                print("\n🚨 CRITICAL FINDINGS:")
+                print("\n CRITICAL FINDINGS:")
                 for p in findings["critical_paths"][:10]:
                     print(f"   [{p['status_code']}] {p['path']}")
 
             if findings["admin_panels"]:
-                print("\n🔐 Admin Panels:")
+                print("\n Admin Panels:")
                 for p in findings["admin_panels"][:5]:
                     print(f"   [{p['status_code']}] {p['path']}")
 
             if findings["vulnerable_params"]:
-                print("\n⚠️  Potentially Vulnerable Parameters:")
+                print("\n[Warning]  Potentially Vulnerable Parameters:")
                 for p in findings["vulnerable_params"][:10]:
                     vulns = ", ".join(p["potential_vuln"])
-                    print(f"   • {p['parameter']} ({p['method']}) - {vulns}")
+                    print(f"    {p['parameter']} ({p['method']}) - {vulns}")
         else:
-            print(f"\n❌ Scan failed: {results.get('error', 'Unknown error')}")
+            print(f"\n[Error] Scan failed: {results.get('error', 'Unknown error')}")
 
         print("\n" + "=" * 60)
 
